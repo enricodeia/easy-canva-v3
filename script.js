@@ -17,32 +17,9 @@ function initEditor() {
             this.mouse = new THREE.Vector2();
             this.hdrLoaded = false;
             this.hdrFileName = null;
-            
-            // Texture generator variables
-            this.originalImageData = null;
-            this.generatedMaps = {
-                baseColor: null,
-                normal: null,
-                roughness: null,
-                displacement: null,
-                ao: null,
-                emissive: null
-            };
-            this.mapCanvases = {
-                baseColor: document.getElementById('baseColorMap'),
-                normal: document.getElementById('normalMap'),
-                roughness: document.getElementById('roughnessMap'),
-                displacement: document.getElementById('displacementMap'),
-                ao: document.getElementById('aoMap'),
-                emissive: document.getElementById('emissiveMap')
-            };
-            this.uvSettings = {
-                tilingX: 1,
-                tilingY: 1,
-                offsetX: 0,
-                offsetY: 0,
-                rotation: 0
-            };
+            this.interactionMode = false;
+            this.hoveredObject = null;
+            this.tooltipVisible = false;
         }
         
         // Add a 3D object to the scene
@@ -56,8 +33,36 @@ function initEditor() {
                 name: name || `Object ${this.objectCount}`,
                 visible: true,
                 type: type,
-                textures: []
+                textures: [],
+                // Add interaction properties
+                interaction: {
+                    type: 'none', // none, hover, click, both
+                    hoverEffect: 'none', // none, highlight, scale, color, emissive
+                    hoverColor: '#ffcc00',
+                    hoverIntensity: 0.5,
+                    clickAction: 'none', // none, toggle, animate, url, custom
+                    animationType: 'rotate', // rotate, bounce, spin
+                    url: '',
+                    customFunction: '',
+                    tooltip: '',
+                    tooltipEnabled: false,
+                    // Store original properties to restore after effects
+                    originalScale: null,
+                    originalColor: null,
+                    originalEmissive: null,
+                    animating: false
+                }
             };
+            
+            // Store original scale for interaction effects
+            if (object.scale) {
+                objectData.interaction.originalScale = object.scale.clone();
+            }
+            
+            // Store original color for interaction effects
+            if (object.material && object.material.color) {
+                objectData.interaction.originalColor = object.material.color.clone();
+            }
             
             this.objects.push(objectData);
             this.updateLayerPanel();
@@ -74,7 +79,13 @@ function initEditor() {
                 object: light,
                 name: name || `Light ${this.lightCount}`,
                 visible: true,
-                type: type
+                type: type,
+                // Add minimal interaction properties for lights
+                interaction: {
+                    type: 'none',
+                    tooltipEnabled: false,
+                    tooltip: ''
+                }
             };
             
             this.objects.push(lightData);
@@ -106,6 +117,13 @@ function initEditor() {
                 if (this.selectedObject && this.selectedObject.id === id) {
                     this.selectObject(null);
                 }
+                
+                // Clear any hover state if this was the hovered object
+                if (this.hoveredObject && this.hoveredObject.id === id) {
+                    this.hoveredObject = null;
+                    this.hideTooltip();
+                }
+                
                 this.updateLayerPanel();
             }
         }
@@ -137,6 +155,9 @@ function initEditor() {
                 
                 const scaleProperty = document.querySelector('.scale-property');
                 if (scaleProperty) scaleProperty.style.display = 'none';
+                
+                // Update interactivity UI
+                this.updateInteractivityUI();
                 
                 return;
             }
@@ -210,6 +231,8 @@ function initEditor() {
                 this.updateObjectControls();
                 // Update material controls
                 this.updateMaterialControls();
+                // Update interactivity UI
+                this.updateInteractivityUI();
             } else {
                 updateSceneInfo("Click on objects to select them");
                 
@@ -466,930 +489,552 @@ function initEditor() {
             }
         }
         
-        // Process an uploaded texture for PBR map generation
-        processTextureForPBR(file) {
-            if (!file || !file.type.match('image.*')) {
-                showNotification('Please upload an image file.', 'error');
+        // Update the interactivity UI based on selected object
+        updateInteractivityUI() {
+            // Get UI elements
+            const interactionType = document.getElementById('interactionType');
+            const hoverEffect = document.getElementById('hoverEffect');
+            const hoverColor = document.getElementById('hoverColor');
+            const hoverIntensity = document.getElementById('hoverIntensity');
+            const hoverIntensityValue = document.getElementById('hoverIntensityValue');
+            const clickAction = document.getElementById('clickAction');
+            const actionUrl = document.getElementById('actionUrl');
+            const animationType = document.getElementById('animationType');
+            const customFunction = document.getElementById('customFunction');
+            const enableTooltip = document.getElementById('enableTooltip');
+            const tooltipContent = document.getElementById('tooltipContent');
+            
+            // Groups that need to be shown/hidden
+            const hoverColorGroup = document.getElementById('hoverColorGroup');
+            const hoverIntensityGroup = document.getElementById('hoverIntensityGroup');
+            const urlGroup = document.getElementById('urlGroup');
+            const animationGroup = document.getElementById('animationGroup');
+            const customFunctionGroup = document.getElementById('customFunctionGroup');
+            const hoverEffectSection = document.getElementById('hoverEffectSection');
+            const clickActionSection = document.getElementById('clickActionSection');
+            
+            if (!this.selectedObject) {
+                // No object selected, disable all interactivity controls
+                if (interactionType) interactionType.value = 'none';
+                if (hoverEffect) hoverEffect.value = 'none';
+                if (clickAction) clickAction.value = 'none';
+                if (enableTooltip) enableTooltip.checked = false;
+                if (tooltipContent) tooltipContent.value = '';
+                
+                // Hide conditional sections
+                if (hoverColorGroup) hoverColorGroup.style.display = 'none';
+                if (hoverIntensityGroup) hoverIntensityGroup.style.display = 'none';
+                if (urlGroup) urlGroup.style.display = 'none';
+                if (animationGroup) animationGroup.style.display = 'none';
+                if (customFunctionGroup) customFunctionGroup.style.display = 'none';
+                
                 return;
             }
             
-            // Show loading progress
-            showProcessingIndicator('Reading texture file...', 10);
+            // Update UI with selected object's interaction settings
+            const interaction = this.selectedObject.interaction;
             
-            const reader = new FileReader();
+            if (interactionType) interactionType.value = interaction.type || 'none';
+            if (hoverEffect) hoverEffect.value = interaction.hoverEffect || 'none';
+            if (hoverColor) hoverColor.value = interaction.hoverColor || '#ffcc00';
+            if (hoverIntensity) hoverIntensity.value = interaction.hoverIntensity || 0.5;
+            if (hoverIntensityValue) hoverIntensityValue.textContent = parseFloat(interaction.hoverIntensity || 0.5).toFixed(2);
+            if (clickAction) clickAction.value = interaction.clickAction || 'none';
+            if (actionUrl) actionUrl.value = interaction.url || '';
+            if (animationType) animationType.value = interaction.animationType || 'rotate';
+            if (customFunction) customFunction.value = interaction.customFunction || '';
+            if (enableTooltip) enableTooltip.checked = interaction.tooltipEnabled || false;
+            if (tooltipContent) tooltipContent.value = interaction.tooltip || '';
             
-            reader.onload = (e) => {
-                try {
-                    updateProcessingProgress(30);
-                    updateProcessingMessage('Processing image...');
+            // Show/hide hover effect section based on interaction type
+            if (hoverEffectSection) {
+                hoverEffectSection.style.display = 
+                    (interaction.type === 'hover' || interaction.type === 'both') ? 'block' : 'none';
+            }
+            
+            // Show/hide click action section based on interaction type
+            if (clickActionSection) {
+                clickActionSection.style.display = 
+                    (interaction.type === 'click' || interaction.type === 'both') ? 'block' : 'none';
+            }
+            
+            // Show/hide color picker based on hover effect
+            if (hoverColorGroup) {
+                hoverColorGroup.style.display = 
+                    (interaction.hoverEffect === 'color' || interaction.hoverEffect === 'emissive') ? 'block' : 'none';
+            }
+            
+            // Show/hide intensity slider based on hover effect
+            if (hoverIntensityGroup) {
+                hoverIntensityGroup.style.display = 
+                    (interaction.hoverEffect === 'scale' || interaction.hoverEffect === 'highlight' || 
+                     interaction.hoverEffect === 'emissive') ? 'block' : 'none';
+            }
+            
+            // Show/hide URL input based on click action
+            if (urlGroup) {
+                urlGroup.style.display = interaction.clickAction === 'url' ? 'block' : 'none';
+            }
+            
+            // Show/hide animation type selector based on click action
+            if (animationGroup) {
+                animationGroup.style.display = interaction.clickAction === 'animate' ? 'block' : 'none';
+            }
+            
+            // Show/hide custom function input based on click action
+            if (customFunctionGroup) {
+                customFunctionGroup.style.display = interaction.clickAction === 'custom' ? 'block' : 'none';
+            }
+        }
+        
+        // Handle hover events in interaction mode
+        handleHover(event) {
+            if (!this.interactionMode) return;
+            
+            // Calculate mouse position
+            const rect = renderer.domElement.getBoundingClientRect();
+            this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+            
+            // Update the picking ray
+            this.raycaster.setFromCamera(this.mouse, camera);
+            
+            // Get intersections with interactive objects
+            const interactiveObjects = this.objects
+                .filter(obj => obj.visible && obj.interaction && 
+                       (obj.interaction.type === 'hover' || obj.interaction.type === 'both'))
+                .map(obj => obj.object);
+            
+            const intersects = this.raycaster.intersectObjects(interactiveObjects, true);
+            
+            if (intersects.length > 0) {
+                // Find the top-level object that was intersected
+                let hitObject = intersects[0].object;
+                
+                // Navigate up to find parent in our object list
+                while (hitObject && !this.objects.some(obj => obj.object === hitObject)) {
+                    hitObject = hitObject.parent;
+                }
+                
+                const hoveredObjData = this.objects.find(obj => obj.object === hitObject);
+                
+                if (hoveredObjData && 
+                    (hoveredObjData.interaction.type === 'hover' || hoveredObjData.interaction.type === 'both')) {
                     
-                    // Display the uploaded image
-                    const uploadedImg = document.getElementById('uploadedTextureImg');
-                    const previewOverlay = document.getElementById('texturePreviewOverlay');
-                    
-                    if (uploadedImg && previewOverlay) {
-                        uploadedImg.src = e.target.result;
-                        previewOverlay.style.display = 'flex';
-                    }
-                    
-                    // Load image to process it
-                    const img = new Image();
-                    img.onload = () => {
-                        try {
-                            updateProcessingProgress(50);
-                            updateProcessingMessage('Analyzing texture...');
-                            
-                            // Store the original image data
-                            this.originalImageData = this.getImageData(img);
-                            
-                            updateProcessingProgress(60);
-                            updateProcessingMessage('Generating texture maps...');
-                            
-                            // Generate the texture maps
-                            this.generateTextureMaps(img);
-                            
-                            updateProcessingProgress(90);
-                            updateProcessingMessage('Applying to material...');
-                            
-                            // Apply the generated textures to the selected object
-                            this.applyGeneratedTexturesToMaterial();
-                            
-                            // Complete processing
-                            setTimeout(() => {
-                                updateProcessingProgress(100);
-                                hideProcessingIndicator();
-                                showNotification('Texture maps generated and applied!', 'success');
-                            }, 300);
-                        } catch (error) {
-                            console.error('Error processing image:', error);
-                            hideProcessingIndicator();
-                            showNotification('Error processing image. Please try another one.', 'error');
+                    // If this is a new hover
+                    if (!this.hoveredObject || this.hoveredObject.id !== hoveredObjData.id) {
+                        // Remove hover effect from previous object
+                        if (this.hoveredObject) {
+                            this.removeHoverEffect(this.hoveredObject);
                         }
-                    };
-                    
-                    img.src = e.target.result;
-                } catch (error) {
-                    console.error('Error loading texture image:', error);
-                    hideProcessingIndicator();
-                    showNotification('Error loading image. Please try another one.', 'error');
-                }
-            };
-            
-            reader.onerror = () => {
-                hideProcessingIndicator();
-                showNotification('Error reading file. Please try again.', 'error');
-            };
-            
-            reader.readAsDataURL(file);
-        }
-        
-        // Get image data from an image element
-        getImageData(img) {
-            const canvas = document.createElement('canvas');
-            canvas.width = img.width;
-            canvas.height = img.height;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0);
-            return ctx.getImageData(0, 0, canvas.width, canvas.height);
-        }
-        
-        // Generate all texture maps from an image
-        generateTextureMaps(img) {
-            // Generate base color map (original texture)
-            this.generateBaseColorMap(img);
-            
-            // Generate normal map
-            this.generateNormalMap(this.originalImageData);
-            
-            // Generate roughness map
-            this.generateRoughnessMap(this.originalImageData);
-            
-            // Generate displacement map
-            this.generateDisplacementMap(this.originalImageData);
-            
-            // Generate ambient occlusion map
-            this.generateAOMap(this.originalImageData);
-            
-            // Generate emissive map
-            this.generateEmissiveMap(this.originalImageData);
-        }
-        
-        // Generate base color map
-        generateBaseColorMap(img) {
-            // Set up canvas
-            const canvas = this.mapCanvases.baseColor;
-            if (!canvas) return;
-            
-            canvas.width = img.width;
-            canvas.height = img.height;
-            
-            // Draw the image
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0);
-            
-            // Create texture
-            const texture = new THREE.Texture(canvas);
-            if (renderer) {
-                texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
-            }
-            texture.needsUpdate = true;
-            
-            // Store the texture
-            this.generatedMaps.baseColor = texture;
-        }
-        
-        // Generate normal map
-        generateNormalMap(imageData) {
-            // Set up canvas
-            const canvas = this.mapCanvases.normal;
-            if (!canvas) return;
-            
-            canvas.width = imageData.width;
-            canvas.height = imageData.height;
-            
-            const ctx = canvas.getContext('2d');
-            const outputData = ctx.createImageData(imageData.width, imageData.height);
-            
-            // Sobel operators for edge detection
-            const sobelX = [-1, 0, 1, -2, 0, 2, -1, 0, 1];
-            const sobelY = [-1, -2, -1, 0, 0, 0, 1, 2, 1];
-            
-            // Normal strength from slider
-            const normalStrength = parseFloat(document.getElementById('normalStrength').value) || 1.0;
-            
-            // Process each pixel
-            for (let y = 0; y < imageData.height; y++) {
-                for (let x = 0; x < imageData.width; x++) {
-                    // Calculate gradient using Sobel operators
-                    let gx = 0;
-                    let gy = 0;
-                    
-                    for (let ky = -1; ky <= 1; ky++) {
-                        for (let kx = -1; kx <= 1; kx++) {
-                            const px = Math.min(imageData.width - 1, Math.max(0, x + kx));
-                            const py = Math.min(imageData.height - 1, Math.max(0, y + ky));
-                            
-                            const idx = (py * imageData.width + px) * 4;
-                            // Use grayscale value (average of RGB)
-                            const val = (imageData.data[idx] + imageData.data[idx + 1] + imageData.data[idx + 2]) / 3;
-                            
-                            gx += val * sobelX[(ky + 1) * 3 + (kx + 1)];
-                            gy += val * sobelY[(ky + 1) * 3 + (kx + 1)];
-                        }
-                    }
-                    
-                    // Convert gradient to normal vector
-                    const scale = 5.0 * normalStrength; // Apply strength parameter
-                    const nx = -gx * scale;
-                    const ny = -gy * scale;
-                    const nz = 255; // Higher Z value for more pronounced effect
-                    
-                    // Normalize
-                    const length = Math.sqrt(nx * nx + ny * ny + nz * nz);
-                    
-                    // Convert from [-1, 1] to [0, 1] range for RGB
-                    const outIdx = (y * imageData.width + x) * 4;
-                    outputData.data[outIdx] = ((nx / length) * 0.5 + 0.5) * 255;
-                    outputData.data[outIdx + 1] = ((ny / length) * 0.5 + 0.5) * 255;
-                    outputData.data[outIdx + 2] = ((nz / length) * 0.5 + 0.5) * 255;
-                    outputData.data[outIdx + 3] = 255; // Alpha
-                }
-            }
-            
-            // Put the processed data back to canvas
-            ctx.putImageData(outputData, 0, 0);
-            
-            // Create texture
-            const texture = new THREE.Texture(canvas);
-            texture.needsUpdate = true;
-            
-            // Store the texture
-            this.generatedMaps.normal = texture;
-        }
-        
-        // Generate roughness map
-        generateRoughnessMap(imageData) {
-            // Set up canvas
-            const canvas = this.mapCanvases.roughness;
-            if (!canvas) return;
-            
-            canvas.width = imageData.width;
-            canvas.height = imageData.height;
-            
-            const ctx = canvas.getContext('2d');
-            const outputData = ctx.createImageData(imageData.width, imageData.height);
-            
-            // Roughness strength from slider
-            const roughnessStrength = parseFloat(document.getElementById('roughnessStrength').value) || 1.0;
-            
-            // Calculate local variance for roughness estimation
-            for (let y = 0; y < imageData.height; y++) {
-                for (let x = 0; x < imageData.width; x++) {
-                    const idx = (y * imageData.width + x) * 4;
-                    
-                    // Sample neighborhood
-                    let sum = 0;
-                    let sumSq = 0;
-                    let count = 0;
-                    
-                    for (let ky = -2; ky <= 2; ky++) {
-                        for (let kx = -2; kx <= 2; kx++) {
-                            const px = Math.min(imageData.width - 1, Math.max(0, x + kx));
-                            const py = Math.min(imageData.height - 1, Math.max(0, y + ky));
-                            
-                            const nIdx = (py * imageData.width + px) * 4;
-                            const val = (imageData.data[nIdx] + imageData.data[nIdx + 1] + imageData.data[nIdx + 2]) / 3;
-                            
-                            sum += val;
-                            sumSq += val * val;
-                            count++;
-                        }
-                    }
-                    
-                    // Calculate variance
-                    const mean = sum / count;
-                    const variance = Math.sqrt(Math.max(0, (sumSq / count) - (mean * mean)));
-                    
-                    // Normalize and scale by roughness strength
-                    let roughness = Math.min(1.0, variance / 50.0) * roughnessStrength;
-                    
-                    // Adjust based on brightness - darker areas are usually rougher
-                    const brightness = (imageData.data[idx] + imageData.data[idx + 1] + imageData.data[idx + 2]) / 3;
-                    roughness = roughness * 0.7 + (1.0 - brightness / 255) * 0.3;
-                    
-                    // Convert to grayscale value
-                    const pixelValue = roughness * 255;
-                    
-                    outputData.data[idx] = pixelValue;
-                    outputData.data[idx + 1] = pixelValue;
-                    outputData.data[idx + 2] = pixelValue;
-                    outputData.data[idx + 3] = 255; // Alpha
-                }
-            }
-            
-            // Put the processed data back to canvas
-            ctx.putImageData(outputData, 0, 0);
-            
-            // Create texture
-            const texture = new THREE.Texture(canvas);
-            texture.needsUpdate = true;
-            
-            // Store the texture
-            this.generatedMaps.roughness = texture;
-        }
-        
-        // Generate displacement map
-        generateDisplacementMap(imageData) {
-            // Set up canvas
-            const canvas = this.mapCanvases.displacement;
-            if (!canvas) return;
-            
-            canvas.width = imageData.width;
-            canvas.height = imageData.height;
-            
-            const ctx = canvas.getContext('2d');
-            const outputData = ctx.createImageData(imageData.width, imageData.height);
-            
-            // Displacement strength from slider
-            const displacementStrength = parseFloat(document.getElementById('displacementStrength').value) || 0.2;
-            
-            // Convert to grayscale with enhanced contrast
-            for (let i = 0; i < imageData.data.length; i += 4) {
-                const r = imageData.data[i];
-                const g = imageData.data[i + 1];
-                const b = imageData.data[i + 2];
-                
-                // Calculate brightness
-                let brightness = 0.299 * r + 0.587 * g + 0.114 * b;
-                
-                // Enhance contrast
-                brightness = Math.max(0, Math.min(255, (brightness - 128) * 1.5 + 128));
-                
-                // Apply displacement strength
-                brightness = brightness * displacementStrength;
-                
-                outputData.data[i] = brightness;
-                outputData.data[i + 1] = brightness;
-                outputData.data[i + 2] = brightness;
-                outputData.data[i + 3] = 255; // Alpha
-            }
-            
-            // Put the processed data back to canvas
-            ctx.putImageData(outputData, 0, 0);
-            
-            // Create texture
-            const texture = new THREE.Texture(canvas);
-            texture.needsUpdate = true;
-            
-            // Store the texture
-            this.generatedMaps.displacement = texture;
-        }
-        
-        // Generate ambient occlusion map
-        generateAOMap(imageData) {
-            // Set up canvas
-            const canvas = this.mapCanvases.ao;
-            if (!canvas) return;
-            
-            canvas.width = imageData.width;
-            canvas.height = imageData.height;
-            
-            const ctx = canvas.getContext('2d');
-            const outputData = ctx.createImageData(imageData.width, imageData.height);
-            
-            // AO strength from slider
-            const aoStrength = parseFloat(document.getElementById('aoStrength').value) || 1.0;
-            
-            // Create blurred copy for edge detection
-            const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = imageData.width;
-            tempCanvas.height = imageData.height;
-            const tempCtx = tempCanvas.getContext('2d');
-            
-            // Draw original image
-            tempCtx.putImageData(imageData, 0, 0);
-            
-            // Apply blur
-            tempCtx.filter = 'blur(2px)';
-            tempCtx.drawImage(tempCanvas, 0, 0);
-            
-            // Get blurred data
-            const blurredData = tempCtx.getImageData(0, 0, imageData.width, imageData.height);
-            
-            // Generate AO by analyzing edges and shadows
-            for (let y = 0; y < imageData.height; y++) {
-                for (let x = 0; x < imageData.width; x++) {
-                    const idx = (y * imageData.width + x) * 4;
-                    
-                    // Edge detection in 5x5 neighborhood
-                    let edgeValue = 0;
-                    let sampleCount = 0;
-                    
-                    for (let ky = -2; ky <= 2; ky++) {
-                        for (let kx = -2; kx <= 2; kx++) {
-                            if (kx === 0 && ky === 0) continue;
-                            
-                            const px = Math.min(imageData.width - 1, Math.max(0, x + kx));
-                            const py = Math.min(imageData.height - 1, Math.max(0, y + ky));
-                            
-                            const nIdx = (py * imageData.width + px) * 4;
-                            
-                            // Get grayscale values
-                            const centerVal = (blurredData.data[idx] + blurredData.data[idx + 1] + blurredData.data[idx + 2]) / 3;
-                            const neighborVal = (blurredData.data[nIdx] + blurredData.data[nIdx + 1] + blurredData.data[nIdx + 2]) / 3;
-                            
-                            // Accumulate absolute difference
-                            edgeValue += Math.abs(centerVal - neighborVal);
-                            sampleCount++;
-                        }
-                    }
-                    
-                    // Calculate average edge value
-                    const avgEdge = edgeValue / sampleCount;
-                    
-                    // Calculate AO value - edges and darker areas get more occlusion
-                    let aoValue = 255 - (avgEdge * 2);
-                    
-                    // Adjust based on original brightness
-                    const brightness = (imageData.data[idx] + imageData.data[idx + 1] + imageData.data[idx + 2]) / 3;
-                    aoValue = aoValue * 0.6 + (255 - brightness) * 0.4;
-                    
-                    // Apply AO strength
-                    aoValue = Math.min(255, Math.max(0, aoValue * aoStrength));
-                    
-                    // Set grayscale values
-                    outputData.data[idx] = aoValue;
-                    outputData.data[idx + 1] = aoValue;
-                    outputData.data[idx + 2] = aoValue;
-                    outputData.data[idx + 3] = 255; // Alpha
-                }
-            }
-            
-            // Put the processed data back to canvas
-            ctx.putImageData(outputData, 0, 0);
-            
-            // Create texture
-            const texture = new THREE.Texture(canvas);
-            texture.needsUpdate = true;
-            
-            // Store the texture
-            this.generatedMaps.ao = texture;
-        }
-        
-        // Generate emissive map
-        generateEmissiveMap(imageData) {
-            // Set up canvas
-            const canvas = this.mapCanvases.emissive;
-            if (!canvas) return;
-            
-            canvas.width = imageData.width;
-            canvas.height = imageData.height;
-            
-            const ctx = canvas.getContext('2d');
-            const outputData = ctx.createImageData(imageData.width, imageData.height);
-            
-            // Emissive strength from slider
-            const emissiveStrength = parseFloat(document.getElementById('emissiveStrength').value) || 0.0;
-            
-            // Only keep bright areas for emission
-            const threshold = 210; // Only brightest parts emit light
-            
-            for (let i = 0; i < imageData.data.length; i += 4) {
-                const r = imageData.data[i];
-                const g = imageData.data[i + 1];
-                const b = imageData.data[i + 2];
-                
-                // Calculate brightness
-                const brightness = (r + g + b) / 3;
-                
-                // Threshold to determine emissive parts
-                let emissionValue = 0;
-                if (brightness > threshold) {
-                    emissionValue = ((brightness - threshold) / (255 - threshold)) * 255 * emissiveStrength;
-                    
-                    // Keep color information
-                    outputData.data[i] = r * (emissionValue / 255);
-                    outputData.data[i + 1] = g * (emissionValue / 255);
-                    outputData.data[i + 2] = b * (emissionValue / 255);
-                } else {
-                    outputData.data[i] = 0;
-                    outputData.data[i + 1] = 0;
-                    outputData.data[i + 2] = 0;
-                }
-                
-                outputData.data[i + 3] = 255; // Alpha
-            }
-            
-            // Put the processed data back to canvas
-            ctx.putImageData(outputData, 0, 0);
-            
-            // Create texture
-            const texture = new THREE.Texture(canvas);
-            texture.needsUpdate = true;
-            
-            // Store the texture
-            this.generatedMaps.emissive = texture;
-        }
-        
-        // Update texture map strength
-        updateMapStrength(mapType) {
-            // Get strength value
-            let strength = 1.0;
-            let value = document.getElementById(`${mapType}Strength`).value;
-            const valueDisplay = document.getElementById(`${mapType}StrengthValue`);
-            
-            if (valueDisplay) {
-                valueDisplay.textContent = parseFloat(value).toFixed(2);
-            }
-            
-            // Regenerate the map
-            switch (mapType) {
-                case 'normal':
-                    if (this.originalImageData) {
-                        this.generateNormalMap(this.originalImageData);
-                    }
-                    break;
-                case 'roughness':
-                    if (this.originalImageData) {
-                        this.generateRoughnessMap(this.originalImageData);
-                    }
-                    break;
-                case 'displacement':
-                    if (this.originalImageData) {
-                        this.generateDisplacementMap(this.originalImageData);
-                    }
-                    break;
-                case 'ao':
-                    if (this.originalImageData) {
-                        this.generateAOMap(this.originalImageData);
-                    }
-                    break;
-                case 'emissive':
-                    if (this.originalImageData) {
-                        this.generateEmissiveMap(this.originalImageData);
-                    }
-                    break;
-            }
-            
-            // Apply updated maps to material
-            this.applyGeneratedTexturesToMaterial();
-        }
-        
-        // Smart enhance textures based on selected material type
-        smartEnhanceTextures() {
-            if (!this.originalImageData) {
-                showNotification('Please upload a texture first', 'error');
-                return;
-            }
-            
-            // Get material type
-            const materialType = document.getElementById('materialTypeSelect').value;
-            
-            // Show processing indicator
-            showProcessingIndicator('Analyzing texture...', 10);
-            
-            // Simulate processing
-            setTimeout(() => {
-                updateProcessingProgress(40);
-                updateProcessingMessage('Identifying material properties...');
-                
-                setTimeout(() => {
-                    updateProcessingProgress(70);
-                    updateProcessingMessage('Applying optimized settings...');
-                    
-                    // Apply optimized settings based on material type
-                    switch (materialType) {
-                        case 'metal':
-                            // Metal settings
-                            document.getElementById('normalStrength').value = 0.8;
-                            document.getElementById('roughnessStrength').value = 0.2;
-                            document.getElementById('aoStrength').value = 0.4; 
-                            document.getElementById('displacementStrength').value = 0.1;
-                            document.getElementById('emissiveStrength').value = 0;
-                            
-                            // Update material metalness
-                            const metalnessInput = document.getElementById('metalness');
-                            if (metalnessInput) metalnessInput.value = 0.9;
-                            break;
-                            
-                        case 'wood':
-                            // Wood settings
-                            document.getElementById('normalStrength').value = 1.2;
-                            document.getElementById('roughnessStrength').value = 0.7;
-                            document.getElementById('aoStrength').value = 0.6;
-                            document.getElementById('displacementStrength').value = 0.3;
-                            document.getElementById('emissiveStrength').value = 0;
-                            
-                            // Update material metalness
-                            const woodMetalness = document.getElementById('metalness');
-                            if (woodMetalness) woodMetalness.value = 0;
-                            break;
-                            
-                        case 'stone':
-                            // Stone settings
-                            document.getElementById('normalStrength').value = 1.5;
-                            document.getElementById('roughnessStrength').value = 0.8;
-                            document.getElementById('aoStrength').value = 0.7;
-                            document.getElementById('displacementStrength').value = 0.5;
-                            document.getElementById('emissiveStrength').value = 0;
-                            
-                            // Update material metalness
-                            const stoneMetalness = document.getElementById('metalness');
-                            if (stoneMetalness) stoneMetalness.value = 0;
-                            break;
-                            
-                        case 'fabric':
-                            // Fabric settings
-                            document.getElementById('normalStrength').value = 0.7;
-                            document.getElementById('roughnessStrength').value = 0.9;
-                            document.getElementById('aoStrength').value = 0.4;
-                            document.getElementById('displacementStrength').value = 0.15;
-                            document.getElementById('emissiveStrength').value = 0;
-                            
-                            // Update material metalness
-                            const fabricMetalness = document.getElementById('metalness');
-                            if (fabricMetalness) fabricMetalness.value = 0;
-                            break;
-                            
-                        case 'plastic':
-                            // Plastic settings
-                            document.getElementById('normalStrength').value = 0.6;
-                            document.getElementById('roughnessStrength').value = 0.3;
-                            document.getElementById('aoStrength').value = 0.3;
-                            document.getElementById('displacementStrength').value = 0.05;
-                            document.getElementById('emissiveStrength').value = 0;
-                            
-                            // Update material metalness
-                            const plasticMetalness = document.getElementById('metalness');
-                            if (plasticMetalness) plasticMetalness.value = 0.1;
-                            break;
-                            
-                        default:
-                            // Auto-detect - simple analysis
-                            const avgBrightness = this.analyzeImageBrightness(this.originalImageData);
-                            const complexity = this.analyzeTextureComplexity(this.originalImageData);
-                            
-                            if (avgBrightness > 200 && complexity < 50) {
-                                // Likely metal
-                                document.getElementById('normalStrength').value = 0.8;
-                                document.getElementById('roughnessStrength').value = 0.2;
-                                document.getElementById('aoStrength').value = 0.3;
-                                document.getElementById('displacementStrength').value = 0.1;
-                                document.getElementById('emissiveStrength').value = 0;
-                                
-                                const autoMetalness = document.getElementById('metalness');
-                                if (autoMetalness) autoMetalness.value = 0.9;
-                                
-                                document.getElementById('materialTypeSelect').value = 'metal';
-                            } else if (complexity > 150) {
-                                // Likely organic
-                                document.getElementById('normalStrength').value = 1.2;
-                                document.getElementById('roughnessStrength').value = 0.7;
-                                document.getElementById('aoStrength').value = 0.6;
-                                document.getElementById('displacementStrength').value = 0.3;
-                                document.getElementById('emissiveStrength').value = 0;
-                                
-                                const autoMetalness = document.getElementById('metalness');
-                                if (autoMetalness) autoMetalness.value = 0;
-                                
-                                document.getElementById('materialTypeSelect').value = complexity > 200 ? 'stone' : 'wood';
-                            } else {
-                                // Generic material
-                                document.getElementById('normalStrength').value = 1.0;
-                                document.getElementById('roughnessStrength').value = 0.5;
-                                document.getElementById('aoStrength').value = 0.5;
-                                document.getElementById('displacementStrength').value = 0.2;
-                                document.getElementById('emissiveStrength').value = 0;
-                                
-                                const autoMetalness = document.getElementById('metalness');
-                                if (autoMetalness) autoMetalness.value = 0.1;
-                            }
-                            break;
-                    }
-                    
-                    // Update value displays
-                    document.getElementById('normalStrengthValue').textContent = 
-                        parseFloat(document.getElementById('normalStrength').value).toFixed(2);
-                    document.getElementById('roughnessStrengthValue').textContent = 
-                        parseFloat(document.getElementById('roughnessStrength').value).toFixed(2);
-                    document.getElementById('aoStrengthValue').textContent = 
-                        parseFloat(document.getElementById('aoStrength').value).toFixed(2);
-                    document.getElementById('displacementStrengthValue').textContent = 
-                        parseFloat(document.getElementById('displacementStrength').value).toFixed(2);
-                    document.getElementById('emissiveStrengthValue').textContent = 
-                        parseFloat(document.getElementById('emissiveStrength').value).toFixed(2);
-                    
-                    // Regenerate maps
-                    this.generateTextureMaps(new Image().src = document.getElementById('uploadedTextureImg').src);
-                    
-                    // Update material
-                    this.applyGeneratedTexturesToMaterial();
-                    this.updateMaterialControls();
-                    
-                    // Complete
-                    setTimeout(() => {
-                        updateProcessingProgress(100);
-                        hideProcessingIndicator();
-                        showNotification('Material optimized for ' + materialType, 'success');
-                    }, 500);
-                }, 500);
-            }, 500);
-        }
-        
-        // Analyze image brightness (helper for smart enhance)
-        analyzeImageBrightness(imageData) {
-            let totalBrightness = 0;
-            for (let i = 0; i < imageData.data.length; i += 4) {
-                const r = imageData.data[i];
-                const g = imageData.data[i + 1];
-                const b = imageData.data[i + 2];
-                totalBrightness += (r + g + b) / 3;
-            }
-            return totalBrightness / (imageData.width * imageData.height);
-        }
-        
-        // Analyze texture complexity (helper for smart enhance)
-        analyzeTextureComplexity(imageData) {
-            // Simple edge detection to estimate texture complexity
-            let edgeCount = 0;
-            const threshold = 30;
-            
-            for (let y = 1; y < imageData.height - 1; y++) {
-                for (let x = 1; x < imageData.width - 1; x++) {
-                    const idx = (y * imageData.width + x) * 4;
-                    const idxUp = ((y-1) * imageData.width + x) * 4;
-                    const idxRight = (y * imageData.width + (x+1)) * 4;
-                    
-                    const currentPixel = (imageData.data[idx] + imageData.data[idx+1] + imageData.data[idx+2]) / 3;
-                    const upPixel = (imageData.data[idxUp] + imageData.data[idxUp+1] + imageData.data[idxUp+2]) / 3;
-                    const rightPixel = (imageData.data[idxRight] + imageData.data[idxRight+1] + imageData.data[idxRight+2]) / 3;
-                    
-                    if (Math.abs(currentPixel - upPixel) > threshold || 
-                        Math.abs(currentPixel - rightPixel) > threshold) {
-                        edgeCount++;
-                    }
-                }
-            }
-            
-            // Normalize to 0-255 range
-            return (edgeCount / (imageData.width * imageData.height)) * 255;
-        }
-        
-        // Apply generated textures to selected object's material
-        applyGeneratedTexturesToMaterial() {
-            if (!this.selectedObject || !this.selectedObject.object.material) {
-                return;
-            }
-            
-            const material = this.selectedObject.object.material;
-            
-            // Apply maps
-            if (this.generatedMaps.baseColor) {
-                material.map = this.generatedMaps.baseColor;
-            }
-            
-            if (this.generatedMaps.normal) {
-                material.normalMap = this.generatedMaps.normal;
-                material.normalScale = new THREE.Vector2(
-                    parseFloat(document.getElementById('normalStrength').value),
-                    parseFloat(document.getElementById('normalStrength').value)
-                );
-            }
-            
-            if (this.generatedMaps.roughness) {
-                material.roughnessMap = this.generatedMaps.roughness;
-                material.roughness = parseFloat(document.getElementById('roughnessStrength').value);
-            }
-            
-            if (this.generatedMaps.displacement) {
-                material.displacementMap = this.generatedMaps.displacement;
-                material.displacementScale = parseFloat(document.getElementById('displacementStrength').value);
-            }
-            
-            if (this.generatedMaps.ao) {
-                material.aoMap = this.generatedMaps.ao;
-                material.aoMapIntensity = parseFloat(document.getElementById('aoStrength').value);
-                
-                // Ensure uv2 attribute is set for aoMap
-                if (this.selectedObject.object.geometry) {
-                    this.selectedObject.object.geometry.setAttribute('uv2', this.selectedObject.object.geometry.attributes.uv);
-                }
-            }
-            
-            if (this.generatedMaps.emissive) {
-                material.emissiveMap = this.generatedMaps.emissive;
-                material.emissive = new THREE.Color(0xffffff);
-                material.emissiveIntensity = parseFloat(document.getElementById('emissiveStrength').value);
-            }
-            
-            // Apply UV mapping settings
-            this.applyUVSettings();
-            
-            // Update material
-            material.needsUpdate = true;
-        }
-        
-        // Apply UV mapping settings
-        applyUVSettings() {
-            if (!this.selectedObject || !this.selectedObject.object.material) {
-                return;
-            }
-            
-            const material = this.selectedObject.object.material;
-            
-            // Get UV settings
-            this.uvSettings.tilingX = parseFloat(document.getElementById('uvTilingX').value) || 1;
-            this.uvSettings.tilingY = parseFloat(document.getElementById('uvTilingY').value) || 1;
-            this.uvSettings.offsetX = parseFloat(document.getElementById('uvOffsetX').value) || 0;
-            this.uvSettings.offsetY = parseFloat(document.getElementById('uvOffsetY').value) || 0;
-            this.uvSettings.rotation = parseFloat(document.getElementById('uvRotation').value) || 0;
-            
-            // Apply to all texture maps
-            const maps = [
-                'map', 'normalMap', 'roughnessMap', 'displacementMap', 
-                'aoMap', 'emissiveMap', 'metalnessMap'
-            ];
-            
-            maps.forEach(mapName => {
-                if (material[mapName]) {
-                    // Set wrapping mode
-                    material[mapName].wrapS = THREE.RepeatWrapping;
-                    material[mapName].wrapT = THREE.RepeatWrapping;
-                    
-                    // Set repeat (tiling)
-                    material[mapName].repeat.set(
-                        this.uvSettings.tilingX,
-                        this.uvSettings.tilingY
-                    );
-                    
-                    // Set offset
-                    material[mapName].offset.set(
-                        this.uvSettings.offsetX,
-                        this.uvSettings.offsetY
-                    );
-                    
-                    // Set rotation (converted to radians)
-                    material[mapName].rotation = this.uvSettings.rotation * (Math.PI / 180);
-                    
-                    // Ensure texture updates
-                    material[mapName].needsUpdate = true;
-                }
-            });
-        }
-        
-        // Download a texture as an image
-        downloadMap(mapType) {
-            const canvas = this.mapCanvases[mapType];
-            if (!canvas) {
-                showNotification('Map not available', 'error');
-                return;
-            }
-            
-            // Create download link
-            const link = document.createElement('a');
-            link.download = `${mapType}-map.png`;
-            link.href = canvas.toDataURL('image/png');
-            link.click();
-            
-            showNotification(`${mapType} map downloaded`, 'success');
-        }
-        
-        // Export all selected maps as a ZIP file
-        exportMapsAsZip() {
-            if (!this.originalImageData) {
-                showNotification('No textures to export', 'error');
-                return;
-            }
-            
-            if (typeof JSZip === 'undefined') {
-                showNotification('JSZip library not available', 'error');
-                return;
-            }
-            
-            // Show processing indicator
-            showProcessingIndicator('Preparing texture maps...', 10);
-            
-            // Create new zip
-            const zip = new JSZip();
-            let exportCount = 0;
-            
-            // Get selected format
-            let format = 'png';
-            let mimeType = 'image/png';
-            
-            document.querySelectorAll('input[name="exportFormat"]').forEach(radio => {
-                if (radio.checked) {
-                    format = radio.value;
-                    mimeType = `image/${format}`;
-                }
-            });
-            
-            // Add maps to zip based on checkboxes
-            const mapTypes = ['baseColor', 'normal', 'roughness', 'displacement', 'ao', 'emissive'];
-            let progress = 20;
-            
-            mapTypes.forEach(mapType => {
-                const checkbox = document.getElementById(`export${mapType.charAt(0).toUpperCase() + mapType.slice(1)}`);
-                if (checkbox && checkbox.checked && this.mapCanvases[mapType]) {
-                    const canvas = this.mapCanvases[mapType];
-                    const dataUrl = canvas.toDataURL(mimeType);
-                    
-                    // Convert data URL to blob
-                    const byteString = atob(dataUrl.split(',')[1]);
-                    const mimeString = dataUrl.split(',')[0].split(':')[1].split(';')[0];
-                    
-                    const ab = new ArrayBuffer(byteString.length);
-                    const ia = new Uint8Array(ab);
-                    
-                    for (let i = 0; i < byteString.length; i++) {
-                        ia[i] = byteString.charCodeAt(i);
-                    }
-                    
-                    const blob = new Blob([ab], {type: mimeString});
-                    
-                    // Add to zip
-                    zip.file(`texture_${mapType}.${format}`, blob);
-                    exportCount++;
-                    
-                    // Update progress
-                    progress += 10;
-                    updateProcessingProgress(Math.min(90, progress));
-                }
-            });
-            
-            if (exportCount === 0) {
-                hideProcessingIndicator();
-                showNotification('Please select at least one map to export', 'warning');
-                return;
-            }
-            
-            // Generate the zip file
-            updateProcessingMessage('Creating ZIP file...');
-            
-            zip.generateAsync({type: 'blob'})
-                .then(content => {
-                    // Create download link
-                    const link = document.createElement('a');
-                    link.href = URL.createObjectURL(content);
-                    link.download = 'texture_maps.zip';
-                    link.click();
-                    
-                    // Clean up
-                    setTimeout(() => {
-                        URL.revokeObjectURL(link.href);
-                        updateProcessingProgress(100);
-                        hideProcessingIndicator();
-                        showNotification(`${exportCount} texture maps exported successfully`, 'success');
                         
-                        // Hide export options
-                        document.querySelector('.export-options').style.display = 'none';
-                    }, 500);
-                })
-                .catch(error => {
-                    console.error('Error creating ZIP:', error);
-                    hideProcessingIndicator();
-                    showNotification('Error creating ZIP file', 'error');
-                });
+                        // Apply hover effect to new object
+                        this.applyHoverEffect(hoveredObjData);
+                        this.hoveredObject = hoveredObjData;
+                        
+                        // Show tooltip if enabled
+                        if (hoveredObjData.interaction.tooltipEnabled && hoveredObjData.interaction.tooltip) {
+                            this.showTooltip(hoveredObjData.interaction.tooltip, event);
+                        } else {
+                            this.hideTooltip();
+                        }
+                    } else if (this.tooltipVisible) {
+                        // Update tooltip position if it's visible
+                        this.updateTooltipPosition(event);
+                    }
+                    
+                    document.body.style.cursor = 'pointer';
+                    return;
+                }
+            }
+            
+            // No hover - reset states
+            if (this.hoveredObject) {
+                this.removeHoverEffect(this.hoveredObject);
+                this.hoveredObject = null;
+                this.hideTooltip();
+            }
+            
+            document.body.style.cursor = 'default';
+        }
+        
+        // Handle click in interaction mode
+        handleClick(event) {
+            if (!this.interactionMode) return;
+            
+            // Calculate mouse position
+            const rect = renderer.domElement.getBoundingClientRect();
+            this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+            
+            // Update the picking ray
+            this.raycaster.setFromCamera(this.mouse, camera);
+            
+            // Get intersections with interactive objects
+            const interactiveObjects = this.objects
+                .filter(obj => obj.visible && obj.interaction && 
+                       (obj.interaction.type === 'click' || obj.interaction.type === 'both'))
+                .map(obj => obj.object);
+            
+            const intersects = this.raycaster.intersectObjects(interactiveObjects, true);
+            
+            if (intersects.length > 0) {
+                // Find the top-level object that was intersected
+                let hitObject = intersects[0].object;
+                
+                // Navigate up to find parent in our object list
+                while (hitObject && !this.objects.some(obj => obj.object === hitObject)) {
+                    hitObject = hitObject.parent;
+                }
+                
+                const clickedObjData = this.objects.find(obj => obj.object === hitObject);
+                
+                if (clickedObjData && 
+                    (clickedObjData.interaction.type === 'click' || clickedObjData.interaction.type === 'both')) {
+                    
+                    // Execute click action
+                    this.executeClickAction(clickedObjData, event);
+                    return;
+                }
+            }
+            
+            // No click on interactive object - exit preview mode if enabled
+            const previewMode = document.getElementById('interactionPreviewMode');
+            if (previewMode && previewMode.checked) {
+                previewMode.checked = false;
+                this.setInteractionMode(false);
+                
+                // Re-enable orbit controls
+                orbitControls.enabled = true;
+                
+                // Hide preview instructions
+                const previewInstructions = document.getElementById('previewInstructions');
+                if (previewInstructions) {
+                    previewInstructions.style.display = 'none';
+                }
+                
+                updateSceneInfo('Exited preview mode', false, 'info');
+            }
+        }
+        
+        // Show tooltip
+        showTooltip(text, event) {
+            const tooltip = document.getElementById('tooltip');
+            if (!tooltip) return;
+            
+            tooltip.textContent = text;
+            tooltip.style.display = 'block';
+            this.tooltipVisible = true;
+            
+            // Position tooltip near mouse
+            this.updateTooltipPosition(event);
+        }
+        
+        // Update tooltip position
+        updateTooltipPosition(event) {
+            const tooltip = document.getElementById('tooltip');
+            if (!tooltip || !this.tooltipVisible) return;
+            
+            tooltip.style.left = (event.clientX + 15) + 'px';
+            tooltip.style.top = (event.clientY + 15) + 'px';
+        }
+        
+        // Hide tooltip
+        hideTooltip() {
+            const tooltip = document.getElementById('tooltip');
+            if (tooltip) {
+                tooltip.style.display = 'none';
+                this.tooltipVisible = false;
+            }
+        }
+        
+        // Apply hover effect to object
+        applyHoverEffect(objData) {
+            if (!objData || !objData.object || !objData.interaction) return;
+            
+            const obj = objData.object;
+            const effect = objData.interaction.hoverEffect;
+            
+            // Skip if no effect is set
+            if (!effect || effect === 'none') return;
+            
+            switch (effect) {
+                case 'highlight':
+                    // Add highlight outline
+                    obj.userData.isHighlighted = true;
+                    obj.traverse(child => {
+                        if (child.isMesh) {
+                            child.userData.isHighlighted = true;
+                        }
+                    });
+                    break;
+                    
+                case 'scale':
+                    // Scale up object
+                    if (objData.interaction.originalScale) {
+                        const scaleFactor = 1 + (objData.interaction.hoverIntensity || 0.1);
+                        obj.scale.copy(objData.interaction.originalScale);
+                        obj.scale.multiplyScalar(scaleFactor);
+                    }
+                    break;
+                    
+                case 'color':
+                    // Change color
+                    if (obj.material && obj.material.color) {
+                        // Store original color if not already stored
+                        if (!objData.interaction.originalColor) {
+                            objData.interaction.originalColor = obj.material.color.clone();
+                        }
+                        
+                        // Apply hover color
+                        obj.material.color.set(objData.interaction.hoverColor || '#ffcc00');
+                    }
+                    break;
+                    
+                case 'emissive':
+                    // Apply glow
+                    if (obj.material) {
+                        // Set up emissive if needed
+                        if (!obj.material.emissive) {
+                            obj.material.emissive = new THREE.Color();
+                        }
+                        
+                        // Store original emissive if not already stored
+                        if (!objData.interaction.originalEmissive) {
+                            objData.interaction.originalEmissive = obj.material.emissive.clone();
+                        }
+                        
+                        // Apply hover color as emissive
+                        obj.material.emissive.set(objData.interaction.hoverColor || '#ffcc00');
+                        obj.material.emissiveIntensity = objData.interaction.hoverIntensity || 0.5;
+                    }
+                    break;
+            }
+        }
+        
+        // Remove hover effect from object
+        removeHoverEffect(objData) {
+            if (!objData || !objData.object || !objData.interaction) return;
+            
+            const obj = objData.object;
+            const effect = objData.interaction.hoverEffect;
+            
+            // Skip if no effect is set
+            if (!effect || effect === 'none') return;
+            
+            switch (effect) {
+                case 'highlight':
+                    // Remove highlight outline
+                    obj.userData.isHighlighted = false;
+                    obj.traverse(child => {
+                        if (child.isMesh) {
+                            child.userData.isHighlighted = false;
+                        }
+                    });
+                    break;
+                    
+                case 'scale':
+                    // Restore original scale
+                    if (objData.interaction.originalScale) {
+                        obj.scale.copy(objData.interaction.originalScale);
+                    }
+                    break;
+                    
+                case 'color':
+                    // Restore original color
+                    if (obj.material && objData.interaction.originalColor) {
+                        obj.material.color.copy(objData.interaction.originalColor);
+                    }
+                    break;
+                    
+                case 'emissive':
+                    // Restore original emissive
+                    if (obj.material && objData.interaction.originalEmissive) {
+                        obj.material.emissive.copy(objData.interaction.originalEmissive);
+                        obj.material.emissiveIntensity = 1;
+                    }
+                    break;
+            }
+        }
+        
+        // Execute click action on object
+        executeClickAction(objData, event) {
+            if (!objData || !objData.interaction) return;
+            
+            const action = objData.interaction.clickAction;
+            const obj = objData.object;
+            
+            // Skip if no action is set
+            if (!action || action === 'none') return;
+            
+            // Cancel any ongoing animation first
+            if (objData.interaction.animationId) {
+                cancelAnimationFrame(objData.interaction.animationId);
+                objData.interaction.animationId = null;
+            }
+            
+            switch (action) {
+                case 'toggle':
+                    // Toggle object visibility
+                    obj.visible = !obj.visible;
+                    objData.visible = obj.visible;
+                    
+                    // Update layer panel to reflect visibility change
+                    this.updateLayerPanel();
+                    break;
+                    
+                case 'animate':
+                    // Start animation
+                    if (!objData.interaction.animating) {
+                        // Store original properties for reset
+                        objData.interaction.originalPosition = obj.position.clone();
+                        objData.interaction.originalRotation = obj.rotation.clone();
+                        objData.interaction.originalScale = obj.scale.clone();
+                        
+                        // Start animation based on type
+                        objData.interaction.animating = true;
+                        
+                        switch (objData.interaction.animationType) {
+                            case 'rotate':
+                                this.animateRotation(objData);
+                                break;
+                                
+                            case 'bounce':
+                                this.animateBounce(objData);
+                                break;
+                                
+                            case 'spin':
+                                this.animateSpin(objData);
+                                break;
+                        }
+                    } else {
+                        // Stop animation and reset
+                        objData.interaction.animating = false;
+                        
+                        // Reset to original properties
+                        if (objData.interaction.originalPosition) {
+                            obj.position.copy(objData.interaction.originalPosition);
+                        }
+                        if (objData.interaction.originalRotation) {
+                            obj.rotation.copy(objData.interaction.originalRotation);
+                        }
+                        if (objData.interaction.originalScale) {
+                            obj.scale.copy(objData.interaction.originalScale);
+                        }
+                    }
+                    break;
+                    
+                case 'url':
+                    // Open URL in new window
+                    if (objData.interaction.url) {
+                        window.open(objData.interaction.url, '_blank');
+                    }
+                    break;
+                    
+                case 'custom':
+                    // Execute custom function if defined in window scope
+                    if (objData.interaction.customFunction && 
+                        typeof window[objData.interaction.customFunction] === 'function') {
+                        try {
+                            window[objData.interaction.customFunction](objData);
+                        } catch (error) {
+                            console.error('Error executing custom function:', error);
+                        }
+                    }
+                    break;
+            }
+        }
+        
+        // Animation: Object rotation
+        animateRotation(objData) {
+            if (!objData || !objData.object || !objData.interaction.animating) return;
+            
+            const obj = objData.object;
+            const startTime = Date.now();
+            const duration = 2000; // 2 seconds for full rotation
+            
+            const animate = () => {
+                if (!objData.interaction.animating) return;
+                
+                const elapsed = Date.now() - startTime;
+                const progress = (elapsed % duration) / duration;
+                
+                // Rotate around Y axis
+                obj.rotation.y = objData.interaction.originalRotation.y + Math.PI * 2 * progress;
+                
+                // Continue animation
+                objData.interaction.animationId = requestAnimationFrame(animate);
+            };
+            
+            animate();
+        }
+        
+        // Animation: Object bounce
+        animateBounce(objData) {
+            if (!objData || !objData.object || !objData.interaction.animating) return;
+            
+            const obj = objData.object;
+            const startTime = Date.now();
+            const duration = 1000; // 1 second for full bounce cycle
+            
+            const animate = () => {
+                if (!objData.interaction.animating) return;
+                
+                const elapsed = Date.now() - startTime;
+                const progress = (elapsed % duration) / duration;
+                
+                // Sine wave for smooth bounce
+                const bounceHeight = 1 + Math.sin(progress * Math.PI * 2) * 0.2;
+                
+                // Apply bounce to Y position
+                obj.position.y = objData.interaction.originalPosition.y + bounceHeight - 1;
+                
+                // Continue animation
+                objData.interaction.animationId = requestAnimationFrame(animate);
+            };
+            
+            animate();
+        }
+        
+        // Animation: Object spin
+        animateSpin(objData) {
+            if (!objData || !objData.object || !objData.interaction.animating) return;
+            
+            const obj = objData.object;
+            const startTime = Date.now();
+            const duration = 1500; // 1.5 seconds for full spin
+            
+            const animate = () => {
+                if (!objData.interaction.animating) return;
+                
+                const elapsed = Date.now() - startTime;
+                const progress = (elapsed % duration) / duration;
+                
+                // Rotate around all axes
+                obj.rotation.x = objData.interaction.originalRotation.x + Math.PI * 2 * progress;
+                obj.rotation.y = objData.interaction.originalRotation.y + Math.PI * 2 * progress;
+                obj.rotation.z = objData.interaction.originalRotation.z + Math.PI * 2 * progress;
+                
+                // Continue animation
+                objData.interaction.animationId = requestAnimationFrame(animate);
+            };
+            
+            animate();
+        }
+        
+        // Enable/disable interaction mode
+        setInteractionMode(enabled) {
+            this.interactionMode = enabled;
+            
+            // Reset any active hover/tooltip
+            if (this.hoveredObject) {
+                this.removeHoverEffect(this.hoveredObject);
+                this.hoveredObject = null;
+                this.hideTooltip();
+            }
+            
+            // Reset cursor
+            document.body.style.cursor = 'default';
         }
         
         // Add texture to selected object
@@ -1439,6 +1084,157 @@ function initEditor() {
                     URL.revokeObjectURL(url);
                 }
             );
+        }
+        
+        // Handle texture map drop
+        handleTextureMapDrop(mapType, file) {
+            if (!this.selectedObject || this.selectedObject.type.includes('light')) {
+                updateSceneInfo('Please select an object first', true);
+                return;
+            }
+            
+            const url = URL.createObjectURL(file);
+            
+            // Show loading message
+            updateSceneInfo(`Loading ${mapType} texture...`);
+            
+            textureLoader.load(url, 
+                // Success callback
+                (texture) => {
+                    // Configure texture settings
+                    texture.encoding = THREE.sRGBEncoding;
+                    texture.wrapS = THREE.RepeatWrapping;
+                    texture.wrapT = THREE.RepeatWrapping;
+                    
+                    // Apply texture to material based on map type
+                    const material = this.selectedObject.object.material;
+                    if (!material) return;
+                    
+                    // Apply UV settings
+                    const uvRepeat = parseFloat(document.getElementById('uvRepeat').value) || 1;
+                    texture.repeat.set(uvRepeat, uvRepeat);
+                    
+                    const uvOffset = parseFloat(document.getElementById('uvOffset').value) || 0;
+                    texture.offset.set(uvOffset, uvOffset);
+                    
+                    switch (mapType) {
+                        case 'baseColor':
+                            material.map = texture;
+                            break;
+                        case 'normal':
+                            material.normalMap = texture;
+                            material.normalScale = new THREE.Vector2(1, 1);
+                            break;
+                        case 'roughness':
+                            material.roughnessMap = texture;
+                            break;
+                        case 'displacement':
+                            material.displacementMap = texture;
+                            material.displacementScale = 0.1;
+                            break;
+                    }
+                    
+                    material.needsUpdate = true;
+                    
+                    // Update preview in drop area
+                    const dropArea = document.querySelector(`.texture-drop-area[data-map-type="${mapType}"]`);
+                    if (dropArea) {
+                        const preview = dropArea.querySelector('.texture-preview');
+                        const content = dropArea.querySelector('.drop-zone-content');
+                        const clearBtn = dropArea.querySelector('.clear-btn');
+                        
+                        if (preview) {
+                            preview.src = url;
+                            preview.style.display = 'block';
+                        }
+                        
+                        if (content) {
+                            content.style.display = 'none';
+                        }
+                        
+                        if (clearBtn) {
+                            clearBtn.style.display = 'block';
+                            clearBtn.dataset.mapType = mapType;
+                            clearBtn.dataset.url = url;
+                        }
+                    }
+                    
+                    updateSceneInfo(`${mapType} texture applied`, false, 'success');
+                },
+                undefined,
+                // Error callback
+                (error) => {
+                    console.error(`Error loading ${mapType} texture:`, error);
+                    updateSceneInfo(`Error loading texture: ${error.message}`, true);
+                    URL.revokeObjectURL(url);
+                }
+            );
+        }
+        
+        // Clear a texture map
+        clearTextureMap(mapType, url) {
+            if (!this.selectedObject || !this.selectedObject.object.material) return;
+            
+            const material = this.selectedObject.object.material;
+            
+            switch (mapType) {
+                case 'baseColor':
+                    if (material.map) {
+                        material.map.dispose();
+                        material.map = null;
+                    }
+                    break;
+                case 'normal':
+                    if (material.normalMap) {
+                        material.normalMap.dispose();
+                        material.normalMap = null;
+                    }
+                    break;
+                case 'roughness':
+                    if (material.roughnessMap) {
+                        material.roughnessMap.dispose();
+                        material.roughnessMap = null;
+                    }
+                    break;
+                case 'displacement':
+                    if (material.displacementMap) {
+                        material.displacementMap.dispose();
+                        material.displacementMap = null;
+                    }
+                    break;
+            }
+            
+            material.needsUpdate = true;
+            
+            // Clean up the URL if provided
+            if (url) {
+                URL.revokeObjectURL(url);
+            }
+            
+            // Update the UI
+            const dropArea = document.querySelector(`.texture-drop-area[data-map-type="${mapType}"]`);
+            if (dropArea) {
+                const preview = dropArea.querySelector('.texture-preview');
+                const content = dropArea.querySelector('.drop-zone-content');
+                const clearBtn = dropArea.querySelector('.clear-btn');
+                
+                if (preview) {
+                    preview.src = '';
+                    preview.style.display = 'none';
+                }
+                
+                if (content) {
+                    content.style.display = 'flex';
+                }
+                
+                if (clearBtn) {
+                    clearBtn.style.display = 'none';
+                    clearBtn.dataset.mapType = '';
+                    clearBtn.dataset.url = '';
+                }
+            }
+            
+            updateSceneInfo(`${mapType} texture removed`, false, 'success');
         }
         
         // Update textures panel in UI
@@ -1646,50 +1442,14 @@ function initEditor() {
                 }
             });
             
-            // Apply the generated PBR textures if available
-            if (this.generatedMaps.baseColor && !material.map) {
-                material.map = this.generatedMaps.baseColor;
-            }
-            
-            if (this.generatedMaps.normal && !material.normalMap) {
-                material.normalMap = this.generatedMaps.normal;
-                material.normalScale = new THREE.Vector2(
-                    parseFloat(document.getElementById('normalStrength').value),
-                    parseFloat(document.getElementById('normalStrength').value)
-                );
-            }
-            
-            if (this.generatedMaps.roughness && !material.roughnessMap) {
-                material.roughnessMap = this.generatedMaps.roughness;
-            }
-            
-            if (this.generatedMaps.displacement && !material.displacementMap) {
-                material.displacementMap = this.generatedMaps.displacement;
-                material.displacementScale = parseFloat(document.getElementById('displacementStrength').value);
-            }
-            
-            if (this.generatedMaps.ao && !material.aoMap) {
-                material.aoMap = this.generatedMaps.ao;
-                material.aoMapIntensity = parseFloat(document.getElementById('aoStrength').value);
-                
-                // Ensure uv2 attribute is set for aoMap
-                if (obj.geometry) {
-                    obj.geometry.setAttribute('uv2', obj.geometry.attributes.uv);
-                }
-            }
-            
-            if (this.generatedMaps.emissive && !material.emissiveMap) {
-                material.emissiveMap = this.generatedMaps.emissive;
-                material.emissive = new THREE.Color(0xffffff);
-                material.emissiveIntensity = parseFloat(document.getElementById('emissiveStrength').value);
-            }
-            
-            // Apply UV mapping settings to all textures
-            this.applyUVSettings();
-            
             // Apply the new material
             obj.material.dispose();
             obj.material = material;
+            
+            // Store color reference for interaction effects
+            if (this.selectedObject.interaction) {
+                this.selectedObject.interaction.originalColor = material.color.clone();
+            }
             
             // Update UI
             this.updateMaterialControls();
@@ -1697,6 +1457,12 @@ function initEditor() {
         
         // Handle canvas click for object selection
         handleCanvasClick(event) {
+            // Skip if in interaction mode
+            if (this.interactionMode) {
+                this.handleClick(event);
+                return;
+            }
+            
             // Calculate mouse position in normalized device coordinates (-1 to +1)
             const rect = renderer.domElement.getBoundingClientRect();
             this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -1780,11 +1546,6 @@ function initEditor() {
             obj.position.copy(position);
             obj.rotation.copy(rotation);
             obj.scale.copy(scale);
-            
-            // Set up uv2 coordinates for AO map if applicable
-            if (obj.material.aoMap) {
-                obj.geometry.setAttribute('uv2', obj.geometry.attributes.uv);
-            }
             
             updateSceneInfo(`Changed geometry to ${type}`, false, 'success');
         }
@@ -2059,29 +1820,11 @@ function initEditor() {
     // Show processing indicator function
     function showProcessingIndicator(message, progress = 0) {
         const indicator = document.getElementById('processingIndicator');
-        const progressBar = document.getElementById('progressBar');
         const messageEl = document.getElementById('processingMessage');
         
-        if (indicator && progressBar && messageEl) {
+        if (indicator && messageEl) {
             messageEl.textContent = message;
-            progressBar.style.width = `${progress}%`;
             indicator.style.display = 'flex';
-        }
-    }
-    
-    // Update processing progress function
-    function updateProcessingProgress(progress) {
-        const progressBar = document.getElementById('progressBar');
-        if (progressBar) {
-            progressBar.style.width = `${progress}%`;
-        }
-    }
-    
-    // Update processing message function
-    function updateProcessingMessage(message) {
-        const messageEl = document.getElementById('processingMessage');
-        if (messageEl) {
-            messageEl.textContent = message;
         }
     }
     
@@ -2207,6 +1950,11 @@ function initEditor() {
                 renderer.domElement.addEventListener('click', (event) => {
                     sceneManager.handleCanvasClick(event);
                 });
+                
+                // Mouse move event for hover interactions
+                renderer.domElement.addEventListener('mousemove', (event) => {
+                    sceneManager.handleHover(event);
+                });
             } else {
                 console.warn('Renderer or domElement not available for click events');
             }
@@ -2249,9 +1997,6 @@ function initEditor() {
                 console.warn('Import model button or file input not found');
             }
             
-            // PBR Texture Generator events
-            setupTextureGeneratorEvents();
-            
             // Add texture button
             const addTextureBtn = document.getElementById('addTexture');
             if (addTextureBtn) {
@@ -2280,6 +2025,9 @@ function initEditor() {
             } else {
                 console.warn('Add texture button not found');
             }
+            
+            // Setup texture map dropzones
+            setupTextureMapDropzones();
             
             // HDR environment map upload and delete
             const hdrUpload = document.getElementById('hdrUpload');
@@ -2318,242 +2066,274 @@ function initEditor() {
             // Set up other control events
             setupControlEvents();
             
+            // Set up interactivity controls
+            setupInteractivityControls();
+            
         } catch (error) {
             console.error('Error setting up event listeners:', error);
             updateSceneInfo('Error setting up application controls', true);
         }
     }
     
-    // Setup PBR Texture Generator specific events
-    function setupTextureGeneratorEvents() {
-        // Texture upload area
-        const textureUploadArea = document.getElementById('textureUploadArea');
-        const textureUploadInput = document.getElementById('textureUploadInput');
-        const deleteTextureBtn = document.getElementById('deleteTextureBtn');
+    // Setup texture map dropzones
+    function setupTextureMapDropzones() {
+        const dropAreas = document.querySelectorAll('.texture-drop-area');
         
-        if (textureUploadArea && textureUploadInput) {
-            // Handle click on upload area
-            textureUploadArea.addEventListener('click', () => {
-                if (textureUploadInput) {
-                    textureUploadInput.click();
-                }
-            });
+        dropAreas.forEach(area => {
+            const mapType = area.dataset.mapType;
+            const dropZone = area.querySelector('.drop-zone');
+            const fileInput = area.querySelector('.file-input');
+            const browseBtn = area.querySelector('.browse-btn');
+            const clearBtn = area.querySelector('.clear-btn');
             
-            // Handle file selection
-            textureUploadInput.addEventListener('change', (e) => {
-                if (e.target.files.length) {
-                    sceneManager.processTextureForPBR(e.target.files[0]);
-                }
-            });
-            
-            // Handle drag and drop
-            textureUploadArea.addEventListener('dragover', (e) => {
-                e.preventDefault();
-                textureUploadArea.classList.add('drag-active');
-            });
-            
-            textureUploadArea.addEventListener('dragleave', () => {
-                textureUploadArea.classList.remove('drag-active');
-            });
-            
-            textureUploadArea.addEventListener('drop', (e) => {
-                e.preventDefault();
-                textureUploadArea.classList.remove('drag-active');
+            // Setup drop zone events
+            if (dropZone) {
+                // Drag over
+                dropZone.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    dropZone.classList.add('drag-over');
+                });
                 
-                if (e.dataTransfer.files.length) {
-                    sceneManager.processTextureForPBR(e.dataTransfer.files[0]);
-                }
-            });
-            
-            // Handle delete button
-            if (deleteTextureBtn) {
-                deleteTextureBtn.addEventListener('click', (e) => {
-                    e.stopPropagation();
+                // Drag leave
+                dropZone.addEventListener('dragleave', () => {
+                    dropZone.classList.remove('drag-over');
+                });
+                
+                // Drop
+                dropZone.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    dropZone.classList.remove('drag-over');
                     
-                    // Reset upload area
-                    const previewOverlay = document.getElementById('texturePreviewOverlay');
-                    const uploadedImg = document.getElementById('uploadedTextureImg');
-                    
-                    if (previewOverlay) {
-                        previewOverlay.style.display = 'none';
+                    // Check if object is selected
+                    if (!sceneManager.selectedObject) {
+                        showNotification('Please select an object first', 'error');
+                        return;
                     }
                     
-                    if (uploadedImg) {
-                        uploadedImg.src = '';
-                    }
-                    
-                    // Clear generated maps
-                    for (const key in sceneManager.generatedMaps) {
-                        if (sceneManager.generatedMaps[key]) {
-                            sceneManager.generatedMaps[key].dispose();
-                            sceneManager.generatedMaps[key] = null;
+                    if (e.dataTransfer.files.length > 0) {
+                        const file = e.dataTransfer.files[0];
+                        // Check if file is an image
+                        if (file.type.startsWith('image/')) {
+                            sceneManager.handleTextureMapDrop(mapType, file);
+                        } else {
+                            showNotification('Please drop an image file', 'error');
                         }
                     }
-                    
-                    // Clear canvases
-                    for (const key in sceneManager.mapCanvases) {
-                        const canvas = sceneManager.mapCanvases[key];
-                        if (canvas) {
-                            const ctx = canvas.getContext('2d');
-                            ctx.clearRect(0, 0, canvas.width, canvas.height);
-                        }
-                    }
-                    
-                    // Reset original image data
-                    sceneManager.originalImageData = null;
-                    
-                    // If there's a selected material, remove the textures
-                    if (sceneManager.selectedObject && sceneManager.selectedObject.object.material) {
-                        const material = sceneManager.selectedObject.object.material;
-                        
-                        material.map = null;
-                        material.normalMap = null;
-                        material.roughnessMap = null;
-                        material.displacementMap = null;
-                        material.aoMap = null;
-                        material.emissiveMap = null;
-                        
-                        material.needsUpdate = true;
-                    }
-                    
-                    showNotification('Texture removed', 'info');
                 });
             }
-        }
+            
+            // Setup browse button
+            if (browseBtn && fileInput) {
+                browseBtn.addEventListener('click', () => {
+                    if (!sceneManager.selectedObject) {
+                        showNotification('Please select an object first', 'error');
+                        return;
+                    }
+                    fileInput.click();
+                });
+                
+                fileInput.addEventListener('change', (e) => {
+                    if (e.target.files.length > 0) {
+                        sceneManager.handleTextureMapDrop(mapType, e.target.files[0]);
+                    }
+                });
+            }
+            
+            // Setup clear button
+            if (clearBtn) {
+                clearBtn.addEventListener('click', () => {
+                    sceneManager.clearTextureMap(mapType, clearBtn.dataset.url);
+                });
+            }
+        });
+    }
+    
+    // Set up interactivity controls
+    function setupInteractivityControls() {
+        // Get UI elements
+        const interactionType = document.getElementById('interactionType');
+        const hoverEffect = document.getElementById('hoverEffect');
+        const hoverColor = document.getElementById('hoverColor');
+        const hoverIntensity = document.getElementById('hoverIntensity');
+        const hoverIntensityValue = document.getElementById('hoverIntensityValue');
+        const clickAction = document.getElementById('clickAction');
+        const actionUrl = document.getElementById('actionUrl');
+        const animationType = document.getElementById('animationType');
+        const customFunction = document.getElementById('customFunction');
+        const enableTooltip = document.getElementById('enableTooltip');
+        const tooltipContent = document.getElementById('tooltipContent');
+        const interactionPreviewMode = document.getElementById('interactionPreviewMode');
         
-        // Smart enhance button
-        const smartEnhanceBtn = document.getElementById('smartEnhance');
-        if (smartEnhanceBtn) {
-            smartEnhanceBtn.addEventListener('click', () => {
-                sceneManager.smartEnhanceTextures();
-            });
-        }
+        // Groups that need to be shown/hidden
+        const hoverEffectSection = document.getElementById('hoverEffectSection');
+        const clickActionSection = document.getElementById('clickActionSection');
+        const hoverColorGroup = document.getElementById('hoverColorGroup');
+        const hoverIntensityGroup = document.getElementById('hoverIntensityGroup');
+        const urlGroup = document.getElementById('urlGroup');
+        const animationGroup = document.getElementById('animationGroup');
+        const customFunctionGroup = document.getElementById('customFunctionGroup');
+        const tooltipContentGroup = document.getElementById('tooltipContentGroup');
+        const previewInstructions = document.getElementById('previewInstructions');
         
-        // Map strength sliders
-        const normalStrength = document.getElementById('normalStrength');
-        const roughnessStrength = document.getElementById('roughnessStrength');
-        const displacementStrength = document.getElementById('displacementStrength');
-        const aoStrength = document.getElementById('aoStrength');
-        const emissiveStrength = document.getElementById('emissiveStrength');
-        
-        if (normalStrength) {
-            normalStrength.addEventListener('input', () => {
-                sceneManager.updateMapStrength('normal');
-            });
-        }
-        
-        if (roughnessStrength) {
-            roughnessStrength.addEventListener('input', () => {
-                sceneManager.updateMapStrength('roughness');
-            });
-        }
-        
-        if (displacementStrength) {
-            displacementStrength.addEventListener('input', () => {
-                sceneManager.updateMapStrength('displacement');
-            });
-        }
-        
-        if (aoStrength) {
-            aoStrength.addEventListener('input', () => {
-                sceneManager.updateMapStrength('ao');
-            });
-        }
-        
-        if (emissiveStrength) {
-            emissiveStrength.addEventListener('input', () => {
-                sceneManager.updateMapStrength('emissive');
-            });
-        }
-        
-        // UV mapping controls
-        const uvTilingX = document.getElementById('uvTilingX');
-        const uvTilingY = document.getElementById('uvTilingY');
-        const uvOffsetX = document.getElementById('uvOffsetX');
-        const uvOffsetY = document.getElementById('uvOffsetY');
-        const uvRotation = document.getElementById('uvRotation');
-        
-        const updateUV = () => {
-            sceneManager.applyUVSettings();
-        };
-        
-        if (uvTilingX) uvTilingX.addEventListener('input', updateUV);
-        if (uvTilingY) uvTilingY.addEventListener('input', updateUV);
-        if (uvOffsetX) uvOffsetX.addEventListener('input', updateUV);
-        if (uvOffsetY) uvOffsetY.addEventListener('input', updateUV);
-        if (uvRotation) uvRotation.addEventListener('input', updateUV);
-        
-        // Download map buttons
-        const downloadBaseColor = document.getElementById('downloadBaseColor');
-        const downloadNormal = document.getElementById('downloadNormal');
-        const downloadRoughness = document.getElementById('downloadRoughness');
-        const downloadDisplacement = document.getElementById('downloadDisplacement');
-        const downloadAO = document.getElementById('downloadAO');
-        const downloadEmissive = document.getElementById('downloadEmissive');
-        
-        if (downloadBaseColor) {
-            downloadBaseColor.addEventListener('click', () => {
-                sceneManager.downloadMap('baseColor');
-            });
-        }
-        
-        if (downloadNormal) {
-            downloadNormal.addEventListener('click', () => {
-                sceneManager.downloadMap('normal');
-            });
-        }
-        
-        if (downloadRoughness) {
-            downloadRoughness.addEventListener('click', () => {
-                sceneManager.downloadMap('roughness');
-            });
-        }
-        
-        if (downloadDisplacement) {
-            downloadDisplacement.addEventListener('click', () => {
-                sceneManager.downloadMap('displacement');
-            });
-        }
-        
-        if (downloadAO) {
-            downloadAO.addEventListener('click', () => {
-                sceneManager.downloadMap('ao');
-            });
-        }
-        
-        if (downloadEmissive) {
-            downloadEmissive.addEventListener('click', () => {
-                sceneManager.downloadMap('emissive');
-            });
-        }
-        
-        // Export maps button
-        const exportMapsBtn = document.getElementById('exportMaps');
-        const exportZIPBtn = document.getElementById('exportZIP');
-        const cancelExportBtn = document.getElementById('cancelExport');
-        
-        if (exportMapsBtn) {
-            exportMapsBtn.addEventListener('click', () => {
-                // Show export options panel
-                const exportOptions = document.querySelector('.export-options');
-                if (exportOptions) {
-                    exportOptions.style.display = 'block';
+        // Handle interaction type change
+        if (interactionType) {
+            interactionType.addEventListener('change', () => {
+                if (!sceneManager.selectedObject) return;
+                
+                const type = interactionType.value;
+                sceneManager.selectedObject.interaction.type = type;
+                
+                // Show/hide hover effect section
+                if (hoverEffectSection) {
+                    hoverEffectSection.style.display = 
+                        (type === 'hover' || type === 'both') ? 'block' : 'none';
+                }
+                
+                // Show/hide click action section
+                if (clickActionSection) {
+                    clickActionSection.style.display = 
+                        (type === 'click' || type === 'both') ? 'block' : 'none';
                 }
             });
         }
         
-        if (exportZIPBtn) {
-            exportZIPBtn.addEventListener('click', () => {
-                sceneManager.exportMapsAsZip();
+        // Handle hover effect change
+        if (hoverEffect) {
+            hoverEffect.addEventListener('change', () => {
+                if (!sceneManager.selectedObject) return;
+                
+                const effect = hoverEffect.value;
+                sceneManager.selectedObject.interaction.hoverEffect = effect;
+                
+                // Show/hide color picker
+                if (hoverColorGroup) {
+                    hoverColorGroup.style.display = 
+                        (effect === 'color' || effect === 'emissive') ? 'block' : 'none';
+                }
+                
+                // Show/hide intensity slider
+                if (hoverIntensityGroup) {
+                    hoverIntensityGroup.style.display = 
+                        (effect === 'scale' || effect === 'highlight' || effect === 'emissive') ? 'block' : 'none';
+                }
             });
         }
         
-        if (cancelExportBtn) {
-            cancelExportBtn.addEventListener('click', () => {
-                // Hide export options panel
-                const exportOptions = document.querySelector('.export-options');
-                if (exportOptions) {
-                    exportOptions.style.display = 'none';
+        // Handle hover color change
+        if (hoverColor) {
+            hoverColor.addEventListener('input', () => {
+                if (!sceneManager.selectedObject) return;
+                
+                sceneManager.selectedObject.interaction.hoverColor = hoverColor.value;
+            });
+        }
+        
+        // Handle hover intensity change
+        if (hoverIntensity && hoverIntensityValue) {
+            hoverIntensity.addEventListener('input', () => {
+                if (!sceneManager.selectedObject) return;
+                
+                const value = parseFloat(hoverIntensity.value);
+                sceneManager.selectedObject.interaction.hoverIntensity = value;
+                hoverIntensityValue.textContent = value.toFixed(2);
+            });
+        }
+        
+        // Handle click action change
+        if (clickAction) {
+            clickAction.addEventListener('change', () => {
+                if (!sceneManager.selectedObject) return;
+                
+                const action = clickAction.value;
+                sceneManager.selectedObject.interaction.clickAction = action;
+                
+                // Show/hide URL input
+                if (urlGroup) {
+                    urlGroup.style.display = action === 'url' ? 'block' : 'none';
+                }
+                
+                // Show/hide animation type selector
+                if (animationGroup) {
+                    animationGroup.style.display = action === 'animate' ? 'block' : 'none';
+                }
+                
+                // Show/hide custom function input
+                if (customFunctionGroup) {
+                    customFunctionGroup.style.display = action === 'custom' ? 'block' : 'none';
+                }
+            });
+        }
+        
+        // Handle URL input change
+        if (actionUrl) {
+            actionUrl.addEventListener('input', () => {
+                if (!sceneManager.selectedObject) return;
+                
+                sceneManager.selectedObject.interaction.url = actionUrl.value;
+            });
+        }
+        
+        // Handle animation type change
+        if (animationType) {
+            animationType.addEventListener('change', () => {
+                if (!sceneManager.selectedObject) return;
+                
+                sceneManager.selectedObject.interaction.animationType = animationType.value;
+            });
+        }
+        
+        // Handle custom function input change
+        if (customFunction) {
+            customFunction.addEventListener('input', () => {
+                if (!sceneManager.selectedObject) return;
+                
+                sceneManager.selectedObject.interaction.customFunction = customFunction.value;
+            });
+        }
+        
+        // Handle tooltip toggle
+        if (enableTooltip) {
+            enableTooltip.addEventListener('change', () => {
+                if (!sceneManager.selectedObject) return;
+                
+                sceneManager.selectedObject.interaction.tooltipEnabled = enableTooltip.checked;
+                
+                // Show/hide tooltip content input
+                if (tooltipContentGroup) {
+                    tooltipContentGroup.style.display = enableTooltip.checked ? 'block' : 'none';
+                }
+            });
+        }
+        
+        // Handle tooltip content change
+        if (tooltipContent) {
+            tooltipContent.addEventListener('input', () => {
+                if (!sceneManager.selectedObject) return;
+                
+                sceneManager.selectedObject.interaction.tooltip = tooltipContent.value;
+            });
+        }
+        
+        // Handle interaction preview mode toggle
+        if (interactionPreviewMode) {
+            interactionPreviewMode.addEventListener('change', () => {
+                const enabled = interactionPreviewMode.checked;
+                
+                // Enable/disable interaction mode
+                sceneManager.setInteractionMode(enabled);
+                
+                // Enable/disable orbit controls
+                orbitControls.enabled = !enabled;
+                
+                // Show/hide preview instructions
+                if (previewInstructions) {
+                    previewInstructions.style.display = enabled ? 'block' : 'none';
+                }
+                
+                if (enabled) {
+                    updateSceneInfo('Interactive preview mode enabled', false, 'info');
+                } else {
+                    updateSceneInfo('Exited preview mode', false, 'info');
                 }
             });
         }
@@ -2573,6 +2353,12 @@ function initEditor() {
                     if (!sceneManager.selectedObject) return;
                     if (sceneManager.selectedObject.object.material) {
                         sceneManager.selectedObject.object.material.color.set(e.target.value);
+                        
+                        // Update interaction original color reference
+                        if (sceneManager.selectedObject.interaction) {
+                            sceneManager.selectedObject.interaction.originalColor = 
+                                sceneManager.selectedObject.object.material.color.clone();
+                        }
                     }
                 });
             }
@@ -2638,6 +2424,12 @@ function initEditor() {
                         const value = parseFloat(e.target.value);
                         if (!isNaN(value) && value > 0) {
                             sceneManager.selectedObject.object.scale[axis.toLowerCase()] = value;
+                            
+                            // Update interaction original scale reference
+                            if (sceneManager.selectedObject.interaction) {
+                                sceneManager.selectedObject.interaction.originalScale = 
+                                    sceneManager.selectedObject.object.scale.clone();
+                            }
                         }
                     });
                 }
@@ -2889,6 +2681,48 @@ function initEditor() {
                             }
                         });
                     }
+                });
+            }
+            
+            // UV settings for textures
+            const uvRepeat = document.getElementById('uvRepeat');
+            const uvOffset = document.getElementById('uvOffset');
+            
+            if (uvRepeat) {
+                uvRepeat.addEventListener('input', (e) => {
+                    if (!sceneManager.selectedObject) return;
+                    const material = sceneManager.selectedObject.object.material;
+                    if (!material) return;
+                    
+                    const value = parseFloat(e.target.value);
+                    if (isNaN(value)) return;
+                    
+                    // Apply to all texture maps
+                    const maps = ['map', 'normalMap', 'roughnessMap', 'displacementMap', 'metalnessMap', 'emissiveMap', 'alphaMap'];
+                    maps.forEach(mapName => {
+                        if (material[mapName]) {
+                            material[mapName].repeat.set(value, value);
+                        }
+                    });
+                });
+            }
+            
+            if (uvOffset) {
+                uvOffset.addEventListener('input', (e) => {
+                    if (!sceneManager.selectedObject) return;
+                    const material = sceneManager.selectedObject.object.material;
+                    if (!material) return;
+                    
+                    const value = parseFloat(e.target.value);
+                    if (isNaN(value)) return;
+                    
+                    // Apply to all texture maps
+                    const maps = ['map', 'normalMap', 'roughnessMap', 'displacementMap', 'metalnessMap', 'emissiveMap', 'alphaMap'];
+                    maps.forEach(mapName => {
+                        if (material[mapName]) {
+                            material[mapName].offset.set(value, value);
+                        }
+                    });
                 });
             }
             
@@ -3179,9 +3013,9 @@ function initEditor() {
                     
                     code += `// ${obj.name}\n`;
                     code += `const ${obj.id}_material = new THREE.MeshStandardMaterial({\n`;
-                    code += `  color: 0x${mesh.material.color.getHexString()},\n`;
-                    code += `  metalness: ${mesh.material.metalness},\n`;
-                    code += `  roughness: ${mesh.material.roughness},\n`;
+                    code += `  color: 0x${mesh.material.color ? mesh.material.color.getHexString() : 'ffffff'},\n`;
+                    code += `  metalness: ${mesh.material.metalness !== undefined ? mesh.material.metalness : 0},\n`;
+                    code += `  roughness: ${mesh.material.roughness !== undefined ? mesh.material.roughness : 1},\n`;
                     
                     if (mesh.material.wireframe) {
                         code += `  wireframe: true,\n`;
@@ -3190,26 +3024,43 @@ function initEditor() {
                     code += `});\n`;
                     
                     // Determine geometry type
-                    if (mesh.geometry instanceof THREE.BoxGeometry) {
-                        code += `const ${obj.id}_geometry = new THREE.BoxGeometry();\n`;
-                    } else if (mesh.geometry instanceof THREE.SphereGeometry) {
-                        code += `const ${obj.id}_geometry = new THREE.SphereGeometry(0.5, 32, 32);\n`;
-                    } else if (mesh.geometry instanceof THREE.CylinderGeometry) {
-                        code += `const ${obj.id}_geometry = new THREE.CylinderGeometry(0.5, 0.5, 1, 32);\n`;
-                    } else if (mesh.geometry instanceof THREE.TorusGeometry) {
-                        code += `const ${obj.id}_geometry = new THREE.TorusGeometry(0.5, 0.2, 16, 32);\n`;
-                    } else if (mesh.geometry instanceof THREE.PlaneGeometry) {
-                        code += `const ${obj.id}_geometry = new THREE.PlaneGeometry(1, 1);\n`;
-                    } else {
-                        code += `// Complex or custom geometry\n`;
-                        code += `const ${obj.id}_geometry = new THREE.BoxGeometry();\n`;
+                    let geometryCode = `const ${obj.id}_geometry = new THREE.BoxGeometry();\n`;
+                    if (mesh.geometry) {
+                        if (mesh.geometry instanceof THREE.BoxGeometry) {
+                            geometryCode = `const ${obj.id}_geometry = new THREE.BoxGeometry();\n`;
+                        } else if (mesh.geometry instanceof THREE.SphereGeometry) {
+                            geometryCode = `const ${obj.id}_geometry = new THREE.SphereGeometry(0.5, 32, 32);\n`;
+                        } else if (mesh.geometry instanceof THREE.CylinderGeometry) {
+                            geometryCode = `const ${obj.id}_geometry = new THREE.CylinderGeometry(0.5, 0.5, 1, 32);\n`;
+                        } else if (mesh.geometry instanceof THREE.TorusGeometry) {
+                            geometryCode = `const ${obj.id}_geometry = new THREE.TorusGeometry(0.5, 0.2, 16, 32);\n`;
+                        } else if (mesh.geometry instanceof THREE.PlaneGeometry) {
+                            geometryCode = `const ${obj.id}_geometry = new THREE.PlaneGeometry(1, 1);\n`;
+                        } else {
+                            geometryCode = `// Complex or custom geometry\n`;
+                            geometryCode += `const ${obj.id}_geometry = new THREE.BoxGeometry();\n`;
+                        }
                     }
                     
-                    code += `const ${obj.id} = new THREE.Mesh(${obj.id}_geometry, ${obj.id}_material);\n`;
-                    code += `${obj.id}.position.set(${mesh.position.x.toFixed(2)}, ${mesh.position.y.toFixed(2)}, ${mesh.position.z.toFixed(2)});\n`;
-                    code += `${obj.id}.rotation.set(${mesh.rotation.x.toFixed(4)}, ${mesh.rotation.y.toFixed(4)}, ${mesh.rotation.z.toFixed(4)});\n`;
-                    code += `${obj.id}.scale.set(${mesh.scale.x.toFixed(2)}, ${mesh.scale.y.toFixed(2)}, ${mesh.scale.z.toFixed(2)});\n`;
+                    code += geometryCode;
                     
+                    // Create the mesh
+                    code += `const ${obj.id} = new THREE.Mesh(${obj.id}_geometry, ${obj.id}_material);\n`;
+                    
+                    // Apply transformations
+                    if (mesh.position) {
+                        code += `${obj.id}.position.set(${mesh.position.x.toFixed(2)}, ${mesh.position.y.toFixed(2)}, ${mesh.position.z.toFixed(2)});\n`;
+                    }
+                    
+                    if (mesh.rotation) {
+                        code += `${obj.id}.rotation.set(${mesh.rotation.x.toFixed(4)}, ${mesh.rotation.y.toFixed(4)}, ${mesh.rotation.z.toFixed(4)});\n`;
+                    }
+                    
+                    if (mesh.scale) {
+                        code += `${obj.id}.scale.set(${mesh.scale.x.toFixed(2)}, ${mesh.scale.y.toFixed(2)}, ${mesh.scale.z.toFixed(2)});\n`;
+                    }
+                    
+                    // Apply shadows
                     if (mesh.castShadow) {
                         code += `${obj.id}.castShadow = true;\n`;
                     }
@@ -3218,9 +3069,254 @@ function initEditor() {
                         code += `${obj.id}.receiveShadow = true;\n`;
                     }
                     
+                    // Add interactivity code if defined
+                    if (obj.interaction && obj.interaction.type !== 'none') {
+                        code += `\n// Interactivity for ${obj.name}\n`;
+                        
+                        // Add hover effects
+                        if (obj.interaction.type === 'hover' || obj.interaction.type === 'both') {
+                            code += `// Hover effect: ${obj.interaction.hoverEffect}\n`;
+                            code += `${obj.id}.userData.hoverEffect = '${obj.interaction.hoverEffect}';\n`;
+                            
+                            if (obj.interaction.hoverEffect === 'color' || obj.interaction.hoverEffect === 'emissive') {
+                                code += `${obj.id}.userData.hoverColor = '${obj.interaction.hoverColor}';\n`;
+                            }
+                            
+                            if (obj.interaction.hoverEffect === 'scale' || obj.interaction.hoverEffect === 'emissive') {
+                                code += `${obj.id}.userData.hoverIntensity = ${obj.interaction.hoverIntensity};\n`;
+                            }
+                        }
+                        
+                        // Add click actions
+                        if (obj.interaction.type === 'click' || obj.interaction.type === 'both') {
+                            code += `// Click action: ${obj.interaction.clickAction}\n`;
+                            code += `${obj.id}.userData.clickAction = '${obj.interaction.clickAction}';\n`;
+                            
+                            if (obj.interaction.clickAction === 'url' && obj.interaction.url) {
+                                code += `${obj.id}.userData.url = '${obj.interaction.url}';\n`;
+                            }
+                            
+                            if (obj.interaction.clickAction === 'animate') {
+                                code += `${obj.id}.userData.animationType = '${obj.interaction.animationType}';\n`;
+                            }
+                            
+                            if (obj.interaction.clickAction === 'custom' && obj.interaction.customFunction) {
+                                code += `${obj.id}.userData.customFunction = '${obj.interaction.customFunction}';\n`;
+                            }
+                        }
+                        
+                        // Add tooltip
+                        if (obj.interaction.tooltipEnabled && obj.interaction.tooltip) {
+                            code += `// Tooltip\n`;
+                            code += `${obj.id}.userData.tooltip = '${obj.interaction.tooltip}';\n`;
+                        }
+                    }
+                    
                     code += `scene.add(${obj.id});\n\n`;
                 }
             });
+            
+            // Add interactivity handlers if any interactive objects exist
+            const hasInteractiveObjects = sceneManager.objects.some(obj => 
+                obj.interaction && obj.interaction.type !== 'none');
+            
+            if (hasInteractiveObjects) {
+                code += `// Interactivity handlers\n`;
+                code += `const raycaster = new THREE.Raycaster();\n`;
+                code += `const mouse = new THREE.Vector2();\n`;
+                code += `let hoveredObject = null;\n\n`;
+                
+                // Mouse move handler for hover effects
+                code += `function onMouseMove(event) {\n`;
+                code += `  // Calculate mouse position\n`;
+                code += `  mouse.x = (event.clientX / window.innerWidth) * 2 - 1;\n`;
+                code += `  mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;\n`;
+                code += `  \n`;
+                code += `  // Update raycaster\n`;
+                code += `  raycaster.setFromCamera(mouse, camera);\n`;
+                code += `  \n`;
+                code += `  // Find intersections\n`;
+                code += `  const intersects = raycaster.intersectObjects(scene.children, true);\n`;
+                code += `  \n`;
+                code += `  // Handle hover effects\n`;
+                code += `  if (intersects.length > 0) {\n`;
+                code += `    const object = intersects[0].object;\n`;
+                code += `    if (object.userData.hoverEffect) {\n`;
+                code += `      // Remove hover effect from previous object\n`;
+                code += `      if (hoveredObject && hoveredObject !== object) {\n`;
+                code += `        removeHoverEffect(hoveredObject);\n`;
+                code += `      }\n`;
+                code += `      \n`;
+                code += `      // Apply hover effect to new object\n`;
+                code += `      applyHoverEffect(object);\n`;
+                code += `      hoveredObject = object;\n`;
+                code += `      document.body.style.cursor = 'pointer';\n`;
+                code += `    }\n`;
+                code += `  } else {\n`;
+                code += `    // No hover - reset\n`;
+                code += `    if (hoveredObject) {\n`;
+                code += `      removeHoverEffect(hoveredObject);\n`;
+                code += `      hoveredObject = null;\n`;
+                code += `      document.body.style.cursor = 'default';\n`;
+                code += `    }\n`;
+                code += `  }\n`;
+                code += `}\n\n`;
+                
+                // Apply hover effect function
+                code += `function applyHoverEffect(object) {\n`;
+                code += `  switch (object.userData.hoverEffect) {\n`;
+                code += `    case 'highlight':\n`;
+                code += `      // Implement highlight effect\n`;
+                code += `      object.userData.originalOutline = object.material.emissive?.clone();\n`;
+                code += `      object.material.emissive = new THREE.Color(0x555555);\n`;
+                code += `      break;\n`;
+                code += `    case 'scale':\n`;
+                code += `      // Implement scale effect\n`;
+                code += `      object.userData.originalScale = object.scale.clone();\n`;
+                code += `      object.scale.multiplyScalar(1 + (object.userData.hoverIntensity || 0.1));\n`;
+                code += `      break;\n`;
+                code += `    case 'color':\n`;
+                code += `      // Implement color effect\n`;
+                code += `      object.userData.originalColor = object.material.color.clone();\n`;
+                code += `      object.material.color.set(object.userData.hoverColor || '#ffcc00');\n`;
+                code += `      break;\n`;
+                code += `    case 'emissive':\n`;
+                code += `      // Implement emissive effect\n`;
+                code += `      object.userData.originalEmissive = object.material.emissive?.clone();\n`;
+                code += `      object.material.emissive = new THREE.Color(object.userData.hoverColor || '#ffcc00');\n`;
+                code += `      object.material.emissiveIntensity = object.userData.hoverIntensity || 0.5;\n`;
+                code += `      break;\n`;
+                code += `  }\n`;
+                code += `}\n\n`;
+                
+                // Remove hover effect function
+                code += `function removeHoverEffect(object) {\n`;
+                code += `  switch (object.userData.hoverEffect) {\n`;
+                code += `    case 'highlight':\n`;
+                code += `      // Remove highlight\n`;
+                code += `      if (object.userData.originalOutline) {\n`;
+                code += `        object.material.emissive = object.userData.originalOutline;\n`;
+                code += `      }\n`;
+                code += `      break;\n`;
+                code += `    case 'scale':\n`;
+                code += `      // Remove scale\n`;
+                code += `      if (object.userData.originalScale) {\n`;
+                code += `        object.scale.copy(object.userData.originalScale);\n`;
+                code += `      }\n`;
+                code += `      break;\n`;
+                code += `    case 'color':\n`;
+                code += `      // Remove color\n`;
+                code += `      if (object.userData.originalColor) {\n`;
+                code += `        object.material.color.copy(object.userData.originalColor);\n`;
+                code += `      }\n`;
+                code += `      break;\n`;
+                code += `    case 'emissive':\n`;
+                code += `      // Remove emissive\n`;
+                code += `      if (object.userData.originalEmissive) {\n`;
+                code += `        object.material.emissive.copy(object.userData.originalEmissive);\n`;
+                code += `        object.material.emissiveIntensity = 1;\n`;
+                code += `      }\n`;
+                code += `      break;\n`;
+                code += `  }\n`;
+                code += `}\n\n`;
+                
+                // Click handler for interactive objects
+                code += `function onClick(event) {\n`;
+                code += `  mouse.x = (event.clientX / window.innerWidth) * 2 - 1;\n`;
+                code += `  mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;\n`;
+                code += `  \n`;
+                code += `  raycaster.setFromCamera(mouse, camera);\n`;
+                code += `  const intersects = raycaster.intersectObjects(scene.children, true);\n`;
+                code += `  \n`;
+                code += `  if (intersects.length > 0) {\n`;
+                code += `    const object = intersects[0].object;\n`;
+                code += `    \n`;
+                code += `    if (object.userData.clickAction) {\n`;
+                code += `      switch (object.userData.clickAction) {\n`;
+                code += `        case 'toggle':\n`;
+                code += `          // Toggle visibility\n`;
+                code += `          object.visible = !object.visible;\n`;
+                code += `          break;\n`;
+                code += `          \n`;
+                code += `        case 'animate':\n`;
+                code += `          // Start animation\n`;
+                code += `          if (!object.userData.animating) {\n`;
+                code += `            object.userData.animating = true;\n`;
+                code += `            object.userData.originalPosition = object.position.clone();\n`;
+                code += `            object.userData.originalRotation = object.rotation.clone();\n`;
+                code += `            \n`;
+                code += `            // Animation type\n`;
+                code += `            object.userData.animationType = object.userData.animationType || 'rotate';\n`;
+                code += `            \n`;
+                code += `            // Start animation loop\n`;
+                code += `            animateObject(object);\n`;
+                code += `          } else {\n`;
+                code += `            // Stop animation\n`;
+                code += `            object.userData.animating = false;\n`;
+                code += `            \n`;
+                code += `            // Reset position/rotation\n`;
+                code += `            if (object.userData.originalPosition) {\n`;
+                code += `              object.position.copy(object.userData.originalPosition);\n`;
+                code += `            }\n`;
+                code += `            if (object.userData.originalRotation) {\n`;
+                code += `              object.rotation.copy(object.userData.originalRotation);\n`;
+                code += `            }\n`;
+                code += `          }\n`;
+                code += `          break;\n`;
+                code += `          \n`;
+                code += `        case 'url':\n`;
+                code += `          // Open URL\n`;
+                code += `          if (object.userData.url) {\n`;
+                code += `            window.open(object.userData.url, '_blank');\n`;
+                code += `          }\n`;
+                code += `          break;\n`;
+                code += `          \n`;
+                code += `        case 'custom':\n`;
+                code += `          // Execute custom function\n`;
+                code += `          if (object.userData.customFunction && \n`;
+                code += `              typeof window[object.userData.customFunction] === 'function') {\n`;
+                code += `            window[object.userData.customFunction](object);\n`;
+                code += `          }\n`;
+                code += `          break;\n`;
+                code += `      }\n`;
+                code += `    }\n`;
+                code += `  }\n`;
+                code += `}\n\n`;
+                
+                // Animation function
+                code += `function animateObject(object) {\n`;
+                code += `  if (!object.userData.animating) return;\n`;
+                code += `  \n`;
+                code += `  // Update object based on animation type\n`;
+                code += `  switch (object.userData.animationType) {\n`;
+                code += `    case 'rotate':\n`;
+                code += `      object.rotation.y += 0.02;\n`;
+                code += `      break;\n`;
+                code += `      \n`;
+                code += `    case 'bounce':\n`;
+                code += `      // Simple bounce using sine wave\n`;
+                code += `      const time = Date.now() * 0.001; // Convert to seconds\n`;
+                code += `      const bounceHeight = Math.sin(time * 5) * 0.2;\n`;
+                code += `      object.position.y = object.userData.originalPosition.y + bounceHeight;\n`;
+                code += `      break;\n`;
+                code += `      \n`;
+                code += `    case 'spin':\n`;
+                code += `      // Spin on all axes\n`;
+                code += `      object.rotation.x += 0.02;\n`;
+                code += `      object.rotation.y += 0.02;\n`;
+                code += `      object.rotation.z += 0.02;\n`;
+                code += `      break;\n`;
+                code += `  }\n`;
+                code += `  \n`;
+                code += `  // Continue animation loop\n`;
+                code += `  requestAnimationFrame(() => animateObject(object));\n`;
+                code += `}\n\n`;
+                
+                // Event listeners
+                code += `// Add event listeners for interactivity\n`;
+                code += `window.addEventListener('mousemove', onMouseMove);\n`;
+                code += `window.addEventListener('click', onClick);\n\n`;
+            }
             
             // Add animation loop
             code += `// Animation loop\n`;
@@ -3265,6 +3361,19 @@ function initEditor() {
     function animate() {
         requestAnimationFrame(animate);
         orbitControls.update();
+        
+        // Apply outline effect to highlighted objects
+        scene.traverse(object => {
+            if (object.userData && object.userData.isHighlighted) {
+                // Render outline for highlighted objects
+                // This is a simplified approach - in a full implementation you'd use an outline pass
+                // The editor just adds a visual indicator in the scene
+                if (object.material && object.material.emissive) {
+                    object.material.emissive.set(0x333333);
+                }
+            }
+        });
+        
         renderer.render(scene, camera);
     }
     
