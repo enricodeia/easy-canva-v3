@@ -228,85 +228,12 @@
                         </div>
                     </div>
                     
-                    <!-- Simplified Texture Maps -->
-                    <div class="control-group" id="textureMapsPanel">
+                    <!-- UV Controls -->
+                    <div class="control-group">
                         <div class="group-header">
-                            <h3>Texture Maps</h3>
+                            <h3>UV Mapping</h3>
                         </div>
-                        
-                        <div class="texture-maps-grid">
-                            <!-- Base Color Map -->
-                            <div class="texture-drop-area" data-map-type="baseColor">
-                                <div class="map-header">Base Color Map</div>
-                                <div class="drop-zone">
-                                    <div class="drop-zone-content">
-                                        <i class="fas fa-image"></i>
-                                        <p>Drag & Drop<br>Base Color Map</p>
-                                    </div>
-                                    <img class="texture-preview" style="display: none;">
-                                </div>
-                                <div class="map-actions">
-                                    <button class="browse-btn">Browse</button>
-                                    <button class="clear-btn" style="display: none;">Clear</button>
-                                </div>
-                                <input type="file" class="file-input" accept="image/*" style="display: none;">
-                            </div>
-                            
-                            <!-- Normal Map -->
-                            <div class="texture-drop-area" data-map-type="normal">
-                                <div class="map-header">Normal Map</div>
-                                <div class="drop-zone">
-                                    <div class="drop-zone-content">
-                                        <i class="fas fa-image"></i>
-                                        <p>Drag & Drop<br>Normal Map</p>
-                                    </div>
-                                    <img class="texture-preview" style="display: none;">
-                                </div>
-                                <div class="map-actions">
-                                    <button class="browse-btn">Browse</button>
-                                    <button class="clear-btn" style="display: none;">Clear</button>
-                                </div>
-                                <input type="file" class="file-input" accept="image/*" style="display: none;">
-                            </div>
-                            
-                            <!-- Roughness Map -->
-                            <div class="texture-drop-area" data-map-type="roughness">
-                                <div class="map-header">Roughness Map</div>
-                                <div class="drop-zone">
-                                    <div class="drop-zone-content">
-                                        <i class="fas fa-image"></i>
-                                        <p>Drag & Drop<br>Roughness Map</p>
-                                    </div>
-                                    <img class="texture-preview" style="display: none;">
-                                </div>
-                                <div class="map-actions">
-                                    <button class="browse-btn">Browse</button>
-                                    <button class="clear-btn" style="display: none;">Clear</button>
-                                </div>
-                                <input type="file" class="file-input" accept="image/*" style="display: none;">
-                            </div>
-                            
-                            <!-- Displacement Map -->
-                            <div class="texture-drop-area" data-map-type="displacement">
-                                <div class="map-header">Displacement Map</div>
-                                <div class="drop-zone">
-                                    <div class="drop-zone-content">
-                                        <i class="fas fa-image"></i>
-                                        <p>Drag & Drop<br>Displacement Map</p>
-                                    </div>
-                                    <img class="texture-preview" style="display: none;">
-                                </div>
-                                <div class="map-actions">
-                                    <button class="browse-btn">Browse</button>
-                                    <button class="clear-btn" style="display: none;">Clear</button>
-                                </div>
-                                <input type="file" class="file-input" accept="image/*" style="display: none;">
-                            </div>
-                        </div>
-                        
-                        <!-- UV Controls -->
                         <div class="property">
-                            <h4 class="sub-header">UV Mapping</h4>
                             <div class="vertical-inputs">
                                 <div class="input-group">
                                     <label for="uvRepeat">Tiling:</label>
@@ -323,7 +250,7 @@
                     <!-- Additional Textures Panel -->
                     <div class="control-group" id="texturesPanel">
                         <div class="group-header">
-                            <h3>Additional Textures</h3>
+                            <h3>Textures</h3>
                             <button id="addTexture" class="icon-btn">+ Add</button>
                         </div>
                         <div id="texturesList">
@@ -538,6 +465,7 @@
                                             <option value="scale">Scale Up</option>
                                             <option value="color">Change Color</option>
                                             <option value="emissive">Glow</option>
+                                            <option value="animate">Play Animation</option>
                                         </select>
                                     </div>
                                     <div class="input-group" id="hoverColorGroup" style="display: none;">
@@ -563,7 +491,7 @@
                                         <select id="clickAction" class="full-width-select">
                                             <option value="none">None</option>
                                             <option value="toggle">Toggle Visibility</option>
-                                            <option value="animate">Simple Animation</option>
+                                            <option value="animate">Play Animation</option>
                                             <option value="url">Open URL</option>
                                             <option value="custom">Custom Function</option>
                                         </select>
