@@ -10,9 +10,6 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.0/examples/js/loaders/GLTFLoader.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.0/examples/js/loaders/RGBELoader.js"></script>
-    <!-- JSZip for texture export -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
     <!-- Google Fonts - Inter & JetBrains Mono -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -42,6 +39,7 @@
                     <button class="tab-btn active" data-tab="materials">Materials</button>
                     <button class="tab-btn" data-tab="lighting">Lighting</button>
                     <button class="tab-btn" data-tab="environment">Environment</button>
+                    <button class="tab-btn" data-tab="interactivity">Interactivity</button>
                 </div>
                 
                 <!-- Objects Tab -->
@@ -230,245 +228,94 @@
                         </div>
                     </div>
                     
-                    <!-- NEW: PBR Texture Generator -->
-                    <div class="control-group" id="pbrTextureGenerator">
+                    <!-- Simplified Texture Maps -->
+                    <div class="control-group" id="textureMapsPanel">
                         <div class="group-header">
-                            <h3>PBR Texture Generator</h3>
-                            <button id="smartEnhance" class="icon-btn">
-                                <i class="fas fa-magic"></i> Smart Enhance
-                            </button>
-                        </div>
-                        
-                        <!-- Texture Upload Area -->
-                        <div class="property">
-                            <div class="upload-area" id="textureUploadArea">
-                                <div class="upload-content">
-                                    <i class="fas fa-cloud-upload-alt"></i>
-                                    <p>Drag & drop texture or</p>
-                                    <label for="textureUploadInput" class="upload-btn">Browse Files</label>
-                                    <input type="file" id="textureUploadInput" accept="image/*" hidden>
-                                </div>
-                                <div class="preview-overlay" id="texturePreviewOverlay" style="display: none;">
-                                    <img id="uploadedTextureImg" src="" alt="Uploaded texture">
-                                    <button class="delete-btn" id="deleteTextureBtn">Delete</button>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- Material Type Selection -->
-                        <div class="property">
-                            <label for="materialTypeSelect">Material Type:</label>
-                            <select id="materialTypeSelect" class="full-width-select">
-                                <option value="auto">Auto-Detect</option>
-                                <option value="metal">Metal</option>
-                                <option value="wood">Wood</option>
-                                <option value="stone">Stone</option>
-                                <option value="fabric">Fabric</option>
-                                <option value="plastic">Plastic</option>
-                            </select>
-                        </div>
-                        
-                        <!-- UV Mapping Controls -->
-                        <div class="property">
-                            <h4 class="sub-header">UV Mapping Controls</h4>
-                            <div class="vertical-inputs">
-                                <!-- Tiling Controls -->
-                                <div class="input-group">
-                                    <label for="uvTilingX">Tiling X:</label>
-                                    <input type="number" id="uvTilingX" min="0.1" max="10" step="0.1" value="1">
-                                </div>
-                                <div class="input-group">
-                                    <label for="uvTilingY">Tiling Y:</label>
-                                    <input type="number" id="uvTilingY" min="0.1" max="10" step="0.1" value="1">
-                                </div>
-                                
-                                <!-- Offset Controls -->
-                                <div class="input-group">
-                                    <label for="uvOffsetX">Offset X:</label>
-                                    <input type="number" id="uvOffsetX" min="-1" max="1" step="0.01" value="0">
-                                </div>
-                                <div class="input-group">
-                                    <label for="uvOffsetY">Offset Y:</label>
-                                    <input type="number" id="uvOffsetY" min="-1" max="1" step="0.01" value="0">
-                                </div>
-                                
-                                <!-- Rotation Control -->
-                                <div class="input-group">
-                                    <label for="uvRotation">Rotation:</label>
-                                    <input type="number" id="uvRotation" min="0" max="360" step="1" value="0">
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- Texture Map Strength Controls -->
-                        <div class="property">
-                            <h4 class="sub-header">Map Strengths</h4>
-                            <div class="vertical-inputs">
-                                <div class="input-group">
-                                    <label for="normalStrength">Normal:</label>
-                                    <input type="range" id="normalStrength" min="0" max="2" step="0.01" value="1">
-                                    <span class="value-label" id="normalStrengthValue">1.00</span>
-                                </div>
-                                <div class="input-group">
-                                    <label for="roughnessStrength">Roughness:</label>
-                                    <input type="range" id="roughnessStrength" min="0" max="1" step="0.01" value="1">
-                                    <span class="value-label" id="roughnessStrengthValue">1.00</span>
-                                </div>
-                                <div class="input-group">
-                                    <label for="displacementStrength">Displacement:</label>
-                                    <input type="range" id="displacementStrength" min="0" max="1" step="0.01" value="0.2">
-                                    <span class="value-label" id="displacementStrengthValue">0.20</span>
-                                </div>
-                                <div class="input-group">
-                                    <label for="aoStrength">AO:</label>
-                                    <input type="range" id="aoStrength" min="0" max="1" step="0.01" value="1">
-                                    <span class="value-label" id="aoStrengthValue">1.00</span>
-                                </div>
-                                <div class="input-group">
-                                    <label for="emissiveStrength">Emissive:</label>
-                                    <input type="range" id="emissiveStrength" min="0" max="1" step="0.01" value="0">
-                                    <span class="value-label" id="emissiveStrengthValue">0.00</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Generated Texture Maps Preview -->
-                    <div class="control-group" id="generatedMapsGroup">
-                        <div class="group-header">
-                            <h3>Generated Maps</h3>
-                            <button id="exportMaps" class="icon-btn">
-                                <i class="fas fa-file-export"></i> Export
-                            </button>
+                            <h3>Texture Maps</h3>
                         </div>
                         
                         <div class="texture-maps-grid">
                             <!-- Base Color Map -->
-                            <div class="map-preview">
-                                <div class="map-header">
-                                    <span>Base Color</span>
-                                    <button class="download-btn" id="downloadBaseColor">
-                                        <i class="fas fa-download"></i>
-                                    </button>
+                            <div class="texture-drop-area" data-map-type="baseColor">
+                                <div class="map-header">Base Color Map</div>
+                                <div class="drop-zone">
+                                    <div class="drop-zone-content">
+                                        <i class="fas fa-image"></i>
+                                        <p>Drag & Drop<br>Base Color Map</p>
+                                    </div>
+                                    <img class="texture-preview" style="display: none;">
                                 </div>
-                                <div class="map-canvas-container">
-                                    <canvas id="baseColorMap"></canvas>
+                                <div class="map-actions">
+                                    <button class="browse-btn">Browse</button>
+                                    <button class="clear-btn" style="display: none;">Clear</button>
                                 </div>
+                                <input type="file" class="file-input" accept="image/*" style="display: none;">
                             </div>
                             
                             <!-- Normal Map -->
-                            <div class="map-preview">
-                                <div class="map-header">
-                                    <span>Normal</span>
-                                    <button class="download-btn" id="downloadNormal">
-                                        <i class="fas fa-download"></i>
-                                    </button>
+                            <div class="texture-drop-area" data-map-type="normal">
+                                <div class="map-header">Normal Map</div>
+                                <div class="drop-zone">
+                                    <div class="drop-zone-content">
+                                        <i class="fas fa-image"></i>
+                                        <p>Drag & Drop<br>Normal Map</p>
+                                    </div>
+                                    <img class="texture-preview" style="display: none;">
                                 </div>
-                                <div class="map-canvas-container">
-                                    <canvas id="normalMap"></canvas>
+                                <div class="map-actions">
+                                    <button class="browse-btn">Browse</button>
+                                    <button class="clear-btn" style="display: none;">Clear</button>
                                 </div>
+                                <input type="file" class="file-input" accept="image/*" style="display: none;">
                             </div>
                             
                             <!-- Roughness Map -->
-                            <div class="map-preview">
-                                <div class="map-header">
-                                    <span>Roughness</span>
-                                    <button class="download-btn" id="downloadRoughness">
-                                        <i class="fas fa-download"></i>
-                                    </button>
+                            <div class="texture-drop-area" data-map-type="roughness">
+                                <div class="map-header">Roughness Map</div>
+                                <div class="drop-zone">
+                                    <div class="drop-zone-content">
+                                        <i class="fas fa-image"></i>
+                                        <p>Drag & Drop<br>Roughness Map</p>
+                                    </div>
+                                    <img class="texture-preview" style="display: none;">
                                 </div>
-                                <div class="map-canvas-container">
-                                    <canvas id="roughnessMap"></canvas>
+                                <div class="map-actions">
+                                    <button class="browse-btn">Browse</button>
+                                    <button class="clear-btn" style="display: none;">Clear</button>
                                 </div>
+                                <input type="file" class="file-input" accept="image/*" style="display: none;">
                             </div>
                             
                             <!-- Displacement Map -->
-                            <div class="map-preview">
-                                <div class="map-header">
-                                    <span>Displacement</span>
-                                    <button class="download-btn" id="downloadDisplacement">
-                                        <i class="fas fa-download"></i>
-                                    </button>
+                            <div class="texture-drop-area" data-map-type="displacement">
+                                <div class="map-header">Displacement Map</div>
+                                <div class="drop-zone">
+                                    <div class="drop-zone-content">
+                                        <i class="fas fa-image"></i>
+                                        <p>Drag & Drop<br>Displacement Map</p>
+                                    </div>
+                                    <img class="texture-preview" style="display: none;">
                                 </div>
-                                <div class="map-canvas-container">
-                                    <canvas id="displacementMap"></canvas>
+                                <div class="map-actions">
+                                    <button class="browse-btn">Browse</button>
+                                    <button class="clear-btn" style="display: none;">Clear</button>
                                 </div>
-                            </div>
-                            
-                            <!-- AO Map -->
-                            <div class="map-preview">
-                                <div class="map-header">
-                                    <span>AO</span>
-                                    <button class="download-btn" id="downloadAO">
-                                        <i class="fas fa-download"></i>
-                                    </button>
-                                </div>
-                                <div class="map-canvas-container">
-                                    <canvas id="aoMap"></canvas>
-                                </div>
-                            </div>
-                            
-                            <!-- Emissive Map -->
-                            <div class="map-preview">
-                                <div class="map-header">
-                                    <span>Emissive</span>
-                                    <button class="download-btn" id="downloadEmissive">
-                                        <i class="fas fa-download"></i>
-                                    </button>
-                                </div>
-                                <div class="map-canvas-container">
-                                    <canvas id="emissiveMap"></canvas>
-                                </div>
+                                <input type="file" class="file-input" accept="image/*" style="display: none;">
                             </div>
                         </div>
                         
-                        <!-- Export Options -->
-                        <div class="property export-options" style="display: none;">
-                            <h4 class="sub-header">Export Options</h4>
-                            <div class="export-format">
-                                <span>Format:</span>
-                                <div class="radio-group">
-                                    <input type="radio" id="formatPNG" name="exportFormat" value="png" checked>
-                                    <label for="formatPNG">PNG</label>
-                                    <input type="radio" id="formatJPG" name="exportFormat" value="jpg">
-                                    <label for="formatJPG">JPG</label>
-                                    <input type="radio" id="formatWEBP" name="exportFormat" value="webp">
-                                    <label for="formatWEBP">WebP</label>
+                        <!-- UV Controls -->
+                        <div class="property">
+                            <h4 class="sub-header">UV Mapping</h4>
+                            <div class="vertical-inputs">
+                                <div class="input-group">
+                                    <label for="uvRepeat">Tiling:</label>
+                                    <input type="number" id="uvRepeat" min="1" max="10" step="1" value="1">
                                 </div>
-                            </div>
-                            <div class="export-maps">
-                                <div class="checkbox-row">
-                                    <div class="checkbox-group">
-                                        <input type="checkbox" id="exportBaseColor" checked>
-                                        <label for="exportBaseColor">Base Color</label>
-                                    </div>
-                                    <div class="checkbox-group">
-                                        <input type="checkbox" id="exportNormal" checked>
-                                        <label for="exportNormal">Normal</label>
-                                    </div>
-                                    <div class="checkbox-group">
-                                        <input type="checkbox" id="exportRoughness" checked>
-                                        <label for="exportRoughness">Roughness</label>
-                                    </div>
+                                <div class="input-group">
+                                    <label for="uvOffset">Offset:</label>
+                                    <input type="number" id="uvOffset" min="-1" max="1" step="0.1" value="0">
                                 </div>
-                                <div class="checkbox-row">
-                                    <div class="checkbox-group">
-                                        <input type="checkbox" id="exportDisplacement" checked>
-                                        <label for="exportDisplacement">Displacement</label>
-                                    </div>
-                                    <div class="checkbox-group">
-                                        <input type="checkbox" id="exportAO" checked>
-                                        <label for="exportAO">AO</label>
-                                    </div>
-                                    <div class="checkbox-group">
-                                        <input type="checkbox" id="exportEmissive">
-                                        <label for="exportEmissive">Emissive</label>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="export-actions">
-                                <button id="exportZIP" class="confirm-btn">Export as ZIP</button>
-                                <button id="cancelExport" class="icon-btn">Cancel</button>
                             </div>
                         </div>
                     </div>
@@ -476,7 +323,7 @@
                     <!-- Textures Panel (Original) -->
                     <div class="control-group" id="texturesPanel">
                         <div class="group-header">
-                            <h3>External Textures</h3>
+                            <h3>Additional Textures</h3>
                             <button id="addTexture" class="icon-btn">+ Add</button>
                         </div>
                         <div id="texturesList">
@@ -658,6 +505,123 @@
                         </div>
                     </div>
                 </div>
+                
+                <!-- NEW: Interactivity Tab -->
+                <div class="tab-content" id="interactivity-tab">
+                    <div class="control-group">
+                        <div class="group-header">
+                            <h3>Interactive Properties</h3>
+                        </div>
+                        <div class="property">
+                            <p class="description">Add interactive behaviors to selected object. These behaviors will be triggered when users interact with your 3D scene.</p>
+                            
+                            <!-- Interaction Types -->
+                            <div class="input-group">
+                                <label for="interactionType">On Interaction:</label>
+                                <select id="interactionType" class="full-width-select">
+                                    <option value="none">No Interaction</option>
+                                    <option value="hover">Hover</option>
+                                    <option value="click">Click</option>
+                                    <option value="both">Hover & Click</option>
+                                </select>
+                            </div>
+                            
+                            <!-- Hover Effect -->
+                            <div class="sub-section" id="hoverEffectSection">
+                                <h4 class="sub-header">Hover Effect</h4>
+                                <div class="vertical-inputs">
+                                    <div class="input-group">
+                                        <label for="hoverEffect">Effect:</label>
+                                        <select id="hoverEffect" class="full-width-select">
+                                            <option value="none">None</option>
+                                            <option value="highlight">Highlight</option>
+                                            <option value="scale">Scale Up</option>
+                                            <option value="color">Change Color</option>
+                                            <option value="emissive">Glow</option>
+                                        </select>
+                                    </div>
+                                    <div class="input-group" id="hoverColorGroup" style="display: none;">
+                                        <label for="hoverColor">Hover Color:</label>
+                                        <div class="color-picker-container">
+                                            <input type="color" id="hoverColor" value="#ffcc00">
+                                        </div>
+                                    </div>
+                                    <div class="input-group" id="hoverIntensityGroup" style="display: none;">
+                                        <label for="hoverIntensity">Intensity:</label>
+                                        <input type="range" id="hoverIntensity" min="0" max="1" step="0.01" value="0.5">
+                                        <span class="value-label" id="hoverIntensityValue">0.50</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Click Action -->
+                            <div class="sub-section" id="clickActionSection">
+                                <h4 class="sub-header">Click Action</h4>
+                                <div class="vertical-inputs">
+                                    <div class="input-group">
+                                        <label for="clickAction">Action:</label>
+                                        <select id="clickAction" class="full-width-select">
+                                            <option value="none">None</option>
+                                            <option value="toggle">Toggle Visibility</option>
+                                            <option value="animate">Simple Animation</option>
+                                            <option value="url">Open URL</option>
+                                            <option value="custom">Custom Function</option>
+                                        </select>
+                                    </div>
+                                    <div class="input-group" id="urlGroup" style="display: none;">
+                                        <label for="actionUrl">URL:</label>
+                                        <input type="text" id="actionUrl" placeholder="https://example.com">
+                                    </div>
+                                    <div class="input-group" id="animationGroup" style="display: none;">
+                                        <label for="animationType">Animation:</label>
+                                        <select id="animationType" class="full-width-select">
+                                            <option value="rotate">Rotate</option>
+                                            <option value="bounce">Bounce</option>
+                                            <option value="spin">Spin</option>
+                                        </select>
+                                    </div>
+                                    <div class="input-group" id="customFunctionGroup" style="display: none;">
+                                        <label for="customFunction">Function Name:</label>
+                                        <input type="text" id="customFunction" placeholder="myFunction">
+                                        <p class="hint">Define this function in your code.</p>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Tooltip Settings -->
+                            <div class="sub-section">
+                                <h4 class="sub-header">Tooltip</h4>
+                                <div class="vertical-inputs">
+                                    <div class="checkbox-group">
+                                        <input type="checkbox" id="enableTooltip">
+                                        <label for="enableTooltip">Show Tooltip</label>
+                                    </div>
+                                    <div class="input-group" id="tooltipContentGroup">
+                                        <label for="tooltipContent">Content:</label>
+                                        <input type="text" id="tooltipContent" placeholder="Describe this object...">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Interactive Preview Section -->
+                    <div class="control-group">
+                        <div class="group-header">
+                            <h3>Test Interactions</h3>
+                        </div>
+                        <div class="property">
+                            <p class="description">Enable interactive preview mode to test your object interactions.</p>
+                            <div class="checkbox-group highlight-toggle">
+                                <input type="checkbox" id="interactionPreviewMode">
+                                <label for="interactionPreviewMode">Enable Preview Mode</label>
+                            </div>
+                            <div class="preview-instructions" id="previewInstructions" style="display: none;">
+                                <p><i class="fas fa-info-circle"></i> Orbit controls are disabled in preview mode. Click anywhere in the scene to exit.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -665,6 +629,7 @@
         <div id="canvas-container">
             <canvas id="three-canvas"></canvas>
             <div id="scene-info">Click on objects to select them</div>
+            <div id="tooltip" class="object-tooltip" style="display: none;"></div>
         </div>
     </div>
     
@@ -673,10 +638,7 @@
         <div class="spinner-container">
             <div class="spinner"></div>
         </div>
-        <p id="processingMessage">Processing texture...</p>
-        <div class="progress-container">
-            <div id="progressBar" class="progress-bar"></div>
-        </div>
+        <p id="processingMessage">Processing...</p>
     </div>
     
     <!-- Notification Container -->
