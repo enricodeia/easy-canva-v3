@@ -2140,7 +2140,6 @@ function initEditor() {
 
     // Add a simple texture for the grid
     const textureLoader = new THREE.TextureLoader();
-    const groundTexture = textureLoader.load('data:image/png;base64,iVBORw0KG
     const groundTexture = textureLoader.load('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==');
     groundMaterial.map = groundTexture;
     groundMaterial.map.repeat.set(gridSize, gridSize);
