@@ -2421,4 +2421,1119 @@ function initEditor() {
                 const scaleInput = document.getElementById(`scale${axis}`);
                 
                 if (positionInput) {
-                    positionInput.addEventListener('
+                positionInput.addEventListener('input', (e) => {
+                        if (!sceneManager.selectedObject) return;
+                        const value = parseFloat(e.target.value);
+                        if (!isNaN(value)) {
+                            sceneManager.selectedObject.object.position[axis.toLowerCase()] = value;
+                        }
+                    });
+                }
+                
+                if (rotateInput) {
+                    rotateInput.addEventListener('input', (e) => {
+                        if (!sceneManager.selectedObject) return;
+                        const valueDegrees = parseFloat(e.target.value);
+                        if (!isNaN(valueDegrees)) {
+                            // Convert degrees to radians for Three.js
+                            const valueRadians = valueDegrees * (Math.PI/180);
+                            sceneManager.selectedObject.object.rotation[axis.toLowerCase()] = valueRadians;
+                        }
+                    });
+                }
+                
+                if (scaleInput) {
+                    scaleInput.addEventListener('input', (e) => {
+                        if (!sceneManager.selectedObject) return;
+                        const value = parseFloat(e.target.value);
+                        if (!isNaN(value) && value > 0) {
+                            sceneManager.selectedObject.object.scale[axis.toLowerCase()] = value;
+                            
+                            // Update interaction original scale reference
+                            if (sceneManager.selectedObject.interaction) {
+                                sceneManager.selectedObject.interaction.originalScale = 
+                                    sceneManager.selectedObject.object.scale.clone();
+                            }
+                        }
+                    });
+                }
+            });
+            
+            // Light controls
+            const lightIntensity = document.getElementById('lightIntensity');
+            const lightColor = document.getElementById('lightColor');
+            const lightDistance = document.getElementById('lightDistance');
+            const lightCastShadow = document.getElementById('lightCastShadow');
+            const lightAngle = document.getElementById('lightAngle');
+            const lightPenumbra = document.getElementById('lightPenumbra');
+            
+            if (lightIntensity) {
+                lightIntensity.addEventListener('input', (e) => {
+                    if (!sceneManager.selectedObject || !sceneManager.selectedObject.type.includes('light')) return;
+                    const value = parseFloat(e.target.value);
+                    if (!isNaN(value)) {
+                        sceneManager.selectedObject.object.intensity = value;
+                    }
+                });
+            }
+            
+            if (lightColor) {
+                lightColor.addEventListener('input', (e) => {
+                    if (!sceneManager.selectedObject || !sceneManager.selectedObject.type.includes('light')) return;
+                    sceneManager.selectedObject.object.color.set(e.target.value);
+                    sceneManager.updateLightsPanel();
+                });
+            }
+            
+            if (lightDistance) {
+                lightDistance.addEventListener('input', (e) => {
+                    if (!sceneManager.selectedObject || !sceneManager.selectedObject.type.includes('light')) return;
+                    if (sceneManager.selectedObject.object.distance !== undefined) {
+                        const value = parseFloat(e.target.value);
+                        if (!isNaN(value)) {
+                            sceneManager.selectedObject.object.distance = value;
+                        }
+                    }
+                });
+            }
+            
+            if (lightCastShadow) {
+                lightCastShadow.addEventListener('change', (e) => {
+                    if (!sceneManager.selectedObject || !sceneManager.selectedObject.type.includes('light')) return;
+                    if (sceneManager.selectedObject.object.castShadow !== undefined) {
+                        sceneManager.selectedObject.object.castShadow = e.target.checked;
+                    }
+                });
+            }
+            
+            if (lightAngle) {
+                lightAngle.addEventListener('input', (e) => {
+                    if (!sceneManager.selectedObject || sceneManager.selectedObject.type !== 'light-spot') return;
+                    const valueDegrees = parseFloat(e.target.value);
+                    if (!isNaN(valueDegrees)) {
+                        const valueRadians = THREE.MathUtils.degToRad(valueDegrees);
+                        sceneManager.selectedObject.object.angle = valueRadians;
+                    }
+                });
+            }
+            
+            if (lightPenumbra) {
+                lightPenumbra.addEventListener('input', (e) => {
+                    if (!sceneManager.selectedObject || sceneManager.selectedObject.type !== 'light-spot') return;
+                    const value = parseFloat(e.target.value);
+                    if (!isNaN(value)) {
+                        sceneManager.selectedObject.object.penumbra = value;
+                    }
+                });
+            }
+            
+            // Camera type toggle
+            const cameraType = document.getElementById('cameraType');
+            if (cameraType) {
+                cameraType.addEventListener('change', (e) => {
+                    if (e.target.value === 'perspective') {
+                        camera = perspectiveCamera;
+                    } else {
+                        camera = orthographicCamera;
+                    }
+                    
+                    // Update camera position and controls
+                    camera.position.copy(orbitControls.object.position);
+                    camera.lookAt(cameraTarget);
+                    orbitControls.object = camera;
+                    
+                    updateSceneInfo(`Switched to ${e.target.value} camera`, false, 'success');
+                });
+            }
+            
+            // Camera controls
+            ['X', 'Y', 'Z'].forEach(axis => {
+                const cameraInput = document.getElementById(`camera${axis}`);
+                const targetInput = document.getElementById(`target${axis}`);
+                
+                if (cameraInput) {
+                    cameraInput.addEventListener('input', (e) => {
+                        const value = parseFloat(e.target.value);
+                        if (!isNaN(value)) {
+                            camera.position[axis.toLowerCase()] = value;
+                            orbitControls.update();
+                        }
+                    });
+                }
+                
+                if (targetInput) {
+                    targetInput.addEventListener('input', (e) => {
+                        const value = parseFloat(e.target.value);
+                        if (!isNaN(value)) {
+                            cameraTarget[axis.toLowerCase()] = value;
+                            camera.lookAt(cameraTarget);
+                            orbitControls.target.copy(cameraTarget);
+                            orbitControls.update();
+                        }
+                    });
+                }
+            });
+            
+            // Fog controls
+            const fogToggle = document.getElementById('fog');
+            const fogDensity = document.getElementById('fogDensity');
+            const fogColor = document.getElementById('fogColor');
+            
+            if (fogToggle) {
+                fogToggle.addEventListener('change', (e) => {
+                    if (e.target.checked) {
+                        const density = fogDensity ? parseFloat(fogDensity.value) : 0.01;
+                        const color = fogColor ? new THREE.Color(fogColor.value) : new THREE.Color(0x111111);
+                        scene.fog = new THREE.FogExp2(color, density);
+                    } else {
+                        scene.fog = null;
+                    }
+                });
+            }
+            
+            if (fogDensity) {
+                fogDensity.addEventListener('input', (e) => {
+                    if (scene.fog && scene.fog instanceof THREE.FogExp2) {
+                        scene.fog.density = parseFloat(e.target.value);
+                    }
+                });
+            }
+            
+            if (fogColor) {
+                fogColor.addEventListener('input', (e) => {
+                    if (scene.fog) {
+                        scene.fog.color.set(e.target.value);
+                    }
+                });
+            }
+            
+            // Grid and ground controls
+            const showGrid = document.getElementById('showGrid');
+            const showGroundPlane = document.getElementById('showGroundPlane');
+            const gridSizeInput = document.getElementById('gridSize');
+            const gridDivisionsInput = document.getElementById('gridDivisions');
+            
+            if (showGrid) {
+                showGrid.addEventListener('change', (e) => {
+                    gridHelper.visible = e.target.checked;
+                });
+            }
+            
+            if (showGroundPlane) {
+                showGroundPlane.addEventListener('change', (e) => {
+                    ground.visible = e.target.checked;
+                });
+            }
+            
+            // Ambient light controls
+            const ambientIntensity = document.getElementById('ambientIntensity');
+            const ambientColor = document.getElementById('ambientColor');
+            
+            if (ambientIntensity) {
+                ambientIntensity.addEventListener('input', (e) => {
+                    ambientLight.intensity = parseFloat(e.target.value);
+                });
+            }
+            
+            if (ambientColor) {
+                ambientColor.addEventListener('input', (e) => {
+                    ambientLight.color.set(e.target.value);
+                });
+            }
+            
+            // Shadow controls
+            const enableShadows = document.getElementById('enableShadows');
+            const shadowQuality = document.getElementById('shadowQuality');
+            
+            if (enableShadows) {
+                enableShadows.addEventListener('change', (e) => {
+                    renderer.shadowMap.enabled = e.target.checked;
+                    
+                    // Update all objects to match shadow setting
+                    sceneManager.objects.forEach(obj => {
+                        if (obj.object.isMesh) {
+                            obj.object.castShadow = e.target.checked;
+                            obj.object.receiveShadow = e.target.checked;
+                        } else if (obj.type.includes('light')) {
+                            if (obj.object.castShadow !== undefined) {
+                                obj.object.castShadow = e.target.checked;
+                            }
+                        }
+                    });
+                });
+            }
+            
+            if (shadowQuality) {
+                shadowQuality.addEventListener('change', (e) => {
+                    let mapSize;
+                    switch (e.target.value) {
+                        case 'low':
+                            mapSize = 512;
+                            break;
+                        case 'medium':
+                            mapSize = 1024;
+                            break;
+                        case 'high':
+                            mapSize = 2048;
+                            break;
+                        default:
+                            mapSize = 1024;
+                    }
+                    
+                    // Update shadow map quality for all lights
+                    sceneManager.lights.forEach(light => {
+                        if (light.object.shadow) {
+                            light.object.shadow.mapSize.width = mapSize;
+                            light.object.shadow.mapSize.height = mapSize;
+                        }
+                    });
+                    
+                    updateSceneInfo(`Shadow quality set to ${e.target.value}`, false, 'success');
+                });
+            }
+            
+            // Environment map intensity
+            const envMapIntensity = document.getElementById('envMapIntensity');
+            if (envMapIntensity) {
+                envMapIntensity.addEventListener('input', (e) => {
+                    const value = parseFloat(e.target.value);
+                    if (!isNaN(value)) {
+                        // Apply to all materials
+                        sceneManager.objects.forEach(obj => {
+                            if (obj.object.material && !obj.type.includes('light')) {
+                                obj.object.material.envMapIntensity = value;
+                            }
+                        });
+                    }
+                });
+            }
+            
+            // UV settings for textures
+            const uvRepeat = document.getElementById('uvRepeat');
+            const uvOffset = document.getElementById('uvOffset');
+            
+            if (uvRepeat) {
+                uvRepeat.addEventListener('input', (e) => {
+                    if (!sceneManager.selectedObject) return;
+                    const material = sceneManager.selectedObject.object.material;
+                    if (!material) return;
+                    
+                    const value = parseFloat(e.target.value);
+                    if (isNaN(value)) return;
+                    
+                    // Apply to all texture maps
+                    const maps = ['map', 'normalMap', 'roughnessMap', 'displacementMap', 'metalnessMap', 'emissiveMap', 'alphaMap'];
+                    maps.forEach(mapName => {
+                        if (material[mapName]) {
+                            material[mapName].repeat.set(value, value);
+                        }
+                    });
+                });
+            }
+            
+            if (uvOffset) {
+                uvOffset.addEventListener('input', (e) => {
+                    if (!sceneManager.selectedObject) return;
+                    const material = sceneManager.selectedObject.object.material;
+                    if (!material) return;
+                    
+                    const value = parseFloat(e.target.value);
+                    if (isNaN(value)) return;
+                    
+                    // Apply to all texture maps
+                    const maps = ['map', 'normalMap', 'roughnessMap', 'displacementMap', 'metalnessMap', 'emissiveMap', 'alphaMap'];
+                    maps.forEach(mapName => {
+                        if (material[mapName]) {
+                            material[mapName].offset.set(value, value);
+                        }
+                    });
+                });
+            }
+            
+            // Export buttons
+            const exportSceneBtn = document.getElementById('exportScene');
+            const copyCodeBtn = document.getElementById('copyCode');
+            
+            if (exportSceneBtn) {
+                exportSceneBtn.addEventListener('click', exportScene);
+            } else {
+                console.warn('Export scene button not found');
+            }
+            
+            if (copyCodeBtn) {
+                copyCodeBtn.addEventListener('click', generateAndCopyCode);
+            } else {
+                console.warn('Copy code button not found');
+            }
+            
+        } catch (error) {
+            console.error('Error setting up control events:', error);
+            updateSceneInfo('Error setting up control events', true);
+        }
+    }
+    
+    // Function to create a new object
+    function createNewObject(type) {
+        try {
+            let object;
+            
+            if (type.startsWith('light-')) {
+                // Create a light
+                switch (type) {
+                    case 'light-point':
+                        const pointLight = new THREE.PointLight(0xffffff, 1, 100);
+                        pointLight.position.set(0, 2, 0);
+                        pointLight.castShadow = true;
+                        object = pointLight;
+                        scene.add(object);
+                        sceneManager.addLight(object, 'Point Light', 'light-point');
+                        break;
+                    case 'light-spot':
+                        const spotLight = new THREE.SpotLight(0xffffff, 1, 100, Math.PI/4, 0.2);
+                        spotLight.position.set(0, 5, 0);
+                        spotLight.castShadow = true;
+                        object = spotLight;
+                        scene.add(object);
+                        sceneManager.addLight(object, 'Spot Light', 'light-spot');
+                        break;
+                    case 'light-area':
+                        // Three.js doesn't have an area light in the core library,
+                        // but we can simulate it with a DirectionalLight
+                        const rectLight = new THREE.DirectionalLight(0xffffff, 1);
+                        rectLight.position.set(0, 5, 0);
+                        rectLight.castShadow = true;
+                        object = rectLight;
+                        scene.add(object);
+                        sceneManager.addLight(object, 'Directional Light', 'light-area');
+                        break;
+                }
+                
+                updateSceneInfo(`Added new ${type.replace('light-', '')} light`, false, 'success');
+            } else {
+                // Create a mesh
+                let geometry;
+                
+                switch (type) {
+                    case 'box': 
+                        geometry = new THREE.BoxGeometry();
+                        break;
+                    case 'sphere': 
+                        geometry = new THREE.SphereGeometry(0.5, 32, 32);
+                        break;
+                    case 'cylinder': 
+                        geometry = new THREE.CylinderGeometry(0.5, 0.5, 1, 32);
+                        break;
+                    case 'torus': 
+                        geometry = new THREE.TorusGeometry(0.5, 0.2, 16, 32);
+                        break;
+                    case 'plane': 
+                        geometry = new THREE.PlaneGeometry(1, 1);
+                        break;
+                    default:
+                        geometry = new THREE.BoxGeometry();
+                }
+                
+                const material = new THREE.MeshStandardMaterial({
+                    color: 0x3d7eff, // Use theme color
+                    metalness: 0,
+                    roughness: 1
+                });
+                
+                object = new THREE.Mesh(geometry, material);
+                object.castShadow = true;
+                object.receiveShadow = true;
+                
+                scene.add(object);
+                
+                // Add to scene manager
+                const objData = sceneManager.addObject(
+                    object, 
+                    type.charAt(0).toUpperCase() + type.slice(1)
+                );
+                
+                // Select the new object
+                sceneManager.selectObject(objData.id);
+                
+                updateSceneInfo(`Added new ${type}`, false, 'success');
+            }
+            
+            return object;
+        } catch (error) {
+            console.error('Error creating new object:', error);
+            updateSceneInfo(`Error creating ${type}`, true);
+            return null;
+        }
+    }
+    
+    // Function to handle model import
+    function handleModelImport(event) {
+        try {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            updateSceneInfo(`Importing model: ${file.name}...`);
+            
+            const url = URL.createObjectURL(file);
+            
+            // Create GLTF loader
+            const gltfLoader = new THREE.GLTFLoader();
+            
+            gltfLoader.load(url, 
+                // Success callback - enhanced to handle animations
+                (gltf) => {
+                    const model = gltf.scene;
+                    
+                    // Center the model
+                    const box = new THREE.Box3().setFromObject(model);
+                    const center = box.getCenter(new THREE.Vector3());
+                    model.position.sub(center);
+                    
+                    // Normalize scale
+                    const size = box.getSize(new THREE.Vector3());
+                    const maxDim = Math.max(size.x, size.y, size.z);
+                    if (maxDim > 2) {
+                        const scale = 2 / maxDim;
+                        model.scale.set(scale, scale, scale);
+                    }
+                    
+                    // Apply shadows
+                    model.traverse((node) => {
+                        if (node.isMesh) {
+                            node.castShadow = true;
+                            node.receiveShadow = true;
+                        }
+                    });
+                    
+                    scene.add(model);
+                    
+                    // Extract and store animations
+                    const animations = gltf.animations || [];
+                    let mixer = null;
+                    
+                    if (animations.length > 0) {
+                        mixer = new THREE.AnimationMixer(model);
+                        console.log(`Model has ${animations.length} animations`);
+                    }
+                    
+                    // Add to scene manager with animation data
+                    const objData = sceneManager.addObject(
+                        model, 
+                        file.name.split('.')[0] || 'Imported Model'
+                    );
+                    
+                    // Store animation data
+                    objData.gltfAnimations = animations;
+                    objData.mixer = mixer;
+                    objData.animationActions = {};
+                    objData.currentGltfAnimation = null;
+                    
+                    // Create animation actions from clips
+                    if (mixer && animations.length > 0) {
+                        animations.forEach((clip) => {
+                            const action = mixer.clipAction(clip);
+                            objData.animationActions[clip.name] = action;
+                        });
+                        
+                        // Update notification to mention animations
+                        updateSceneInfo(`Model imported with ${animations.length} animations`, false, 'success');
+                    } else {
+                        updateSceneInfo(`Model ${file.name} imported successfully`, false, 'success');
+                    }
+                    
+                    // Select the new model
+                    sceneManager.selectObject(objData.id);
+                    
+                    // Clean up URL
+                    URL.revokeObjectURL(url);
+                }, 
+                // Progress callback
+                (xhr) => {
+                    const percent = (xhr.loaded / xhr.total * 100).toFixed(0);
+                    updateSceneInfo(`Loading model: ${percent}%`);
+                },
+                // Error callback
+                (error) => {
+                    console.error('Error loading model:', error);
+                    updateSceneInfo('Error loading model', true);
+                    URL.revokeObjectURL(url);
+                }
+            );
+            
+            // Reset file input
+            event.target.value = '';
+        } catch (error) {
+            console.error('Error handling model import:', error);
+            updateSceneInfo('Error importing model', true);
+        }
+    }
+    
+    // Function to export scene as JSON
+    function exportScene() {
+        try {
+            const sceneJson = scene.toJSON();
+            const jsonString = JSON.stringify(sceneJson, null, 2);
+            const blob = new Blob([jsonString], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'scene.json';
+            a.click();
+            
+            URL.revokeObjectURL(url);
+            
+            updateSceneInfo('Scene exported as JSON', false, 'success');
+        } catch (error) {
+            console.error('Error exporting scene:', error);
+            updateSceneInfo('Error exporting scene', true);
+        }
+    }
+    
+    // Function to generate and copy Three.js code
+    function generateAndCopyCode() {
+        try {
+            // Generate code for scene setup
+            let code = `// Three.js Scene exported from 3D Scene Editor\n\n`;
+            code += `// Create scene\n`;
+            code += `const scene = new THREE.Scene();\n`;
+            code += `scene.background = new THREE.Color(0x${scene.background.getHexString()});\n\n`;
+            
+            // Add renderer code
+            code += `// Renderer setup\n`;
+            code += `const renderer = new THREE.WebGLRenderer({ antialias: true });\n`;
+            code += `renderer.setSize(window.innerWidth, window.innerHeight);\n`;
+            code += `renderer.setPixelRatio(window.devicePixelRatio);\n`;
+            code += `renderer.shadowMap.enabled = ${renderer.shadowMap.enabled};\n`;
+            code += `renderer.shadowMap.type = THREE.PCFSoftShadowMap;\n`;
+            code += `renderer.toneMapping = THREE.ACESFilmicToneMapping;\n`;
+            code += `renderer.toneMappingExposure = 1;\n`;
+            code += `document.body.appendChild(renderer.domElement);\n\n`;
+            
+            // Add camera code
+            code += `// Camera setup\n`;
+            if (camera === perspectiveCamera) {
+                code += `const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);\n`;
+            } else {
+                code += `const camera = new THREE.OrthographicCamera(-5, 5, 5, -5, 0.1, 1000);\n`;
+            }
+            code += `camera.position.set(${camera.position.x.toFixed(2)}, ${camera.position.y.toFixed(2)}, ${camera.position.z.toFixed(2)});\n`;
+            code += `camera.lookAt(${cameraTarget.x.toFixed(2)}, ${cameraTarget.y.toFixed(2)}, ${cameraTarget.z.toFixed(2)});\n\n`;
+            
+            // Add orbit controls
+            code += `// Orbit controls\n`;
+            code += `const controls = new THREE.OrbitControls(camera, renderer.domElement);\n`;
+            code += `controls.enableDamping = true;\n`;
+            code += `controls.dampingFactor = 0.05;\n\n`;
+            
+            // Add ambient light
+            code += `// Ambient light\n`;
+            code += `const ambientLight = new THREE.AmbientLight(0x${ambientLight.color.getHexString()}, ${ambientLight.intensity});\n`;
+            code += `scene.add(ambientLight);\n\n`;
+            
+            // Add all other objects
+            code += `// Scene objects\n`;
+            sceneManager.objects.forEach(obj => {
+                if (obj.type.includes('light')) {
+                    // Add light code
+                    const light = obj.object;
+                    
+                    code += `// ${obj.name}\n`;
+                    if (obj.type === 'light-directional') {
+                        code += `const ${obj.id} = new THREE.DirectionalLight(0x${light.color.getHexString()}, ${light.intensity});\n`;
+                    } else if (obj.type === 'light-point') {
+                        code += `const ${obj.id} = new THREE.PointLight(0x${light.color.getHexString()}, ${light.intensity}, ${light.distance});\n`;
+                    } else if (obj.type === 'light-spot') {
+                        code += `const ${obj.id} = new THREE.SpotLight(0x${light.color.getHexString()}, ${light.intensity}, ${light.distance}, ${light.angle.toFixed(4)}, ${light.penumbra});\n`;
+                    }
+                    
+                    code += `${obj.id}.position.set(${light.position.x.toFixed(2)}, ${light.position.y.toFixed(2)}, ${light.position.z.toFixed(2)});\n`;
+                    
+                    if (light.castShadow) {
+                        code += `${obj.id}.castShadow = true;\n`;
+                        if (light.shadow) {
+                            code += `${obj.id}.shadow.mapSize.width = ${light.shadow.mapSize.width};\n`;
+                            code += `${obj.id}.shadow.mapSize.height = ${light.shadow.mapSize.height};\n`;
+                        }
+                    }
+                    
+                    code += `scene.add(${obj.id});\n\n`;
+                } else {
+                    // Add mesh code
+                    const mesh = obj.object;
+                    
+                    code += `// ${obj.name}\n`;
+                    
+                    // Check if it's a GLTF model
+                    if (obj.gltfAnimations && obj.gltfAnimations.length > 0) {
+                        code += `// This is a GLTF model with ${obj.gltfAnimations.length} animations\n`;
+                        code += `// Use THREE.GLTFLoader to load it dynamically\n`;
+                        code += `// Code example:\n`;
+                        code += `// const loader = new THREE.GLTFLoader();\n`;
+                        code += `// loader.load('path-to-model.glb', (gltf) => {\n`;
+                        code += `//   const model = gltf.scene;\n`;
+                        code += `//   scene.add(model);\n`;
+                        code += `//   // Access animations with: gltf.animations\n`;
+                        code += `// });\n\n`;
+                        
+                        code += `// Position, rotation, and scale for the model:\n`;
+                        code += `// model.position.set(${mesh.position.x.toFixed(2)}, ${mesh.position.y.toFixed(2)}, ${mesh.position.z.toFixed(2)});\n`;
+                        code += `// model.rotation.set(${mesh.rotation.x.toFixed(4)}, ${mesh.rotation.y.toFixed(4)}, ${mesh.rotation.z.toFixed(4)});\n`;
+                        code += `// model.scale.set(${mesh.scale.x.toFixed(2)}, ${mesh.scale.y.toFixed(2)}, ${mesh.scale.z.toFixed(2)});\n\n`;
+                        
+                        // Add animation code if there are animations
+                        if (obj.gltfAnimations.length > 0) {
+                            code += `// Animation code example:\n`;
+                            code += `// const mixer = new THREE.AnimationMixer(model);\n`;
+                            obj.gltfAnimations.forEach(anim => {
+                                code += `// const ${anim.name.replace(/\s+/g, '_')}Action = mixer.clipAction(gltf.animations.find(a => a.name === '${anim.name}'));\n`;
+                            });
+                            code += `// Update in animation loop: mixer.update(deltaTime);\n\n`;
+                        }
+                    } else {
+                        // Regular mesh
+                        code += `const ${obj.id}_material = new THREE.MeshStandardMaterial({\n`;
+                        code += `  color: 0x${mesh.material.color ? mesh.material.color.getHexString() : 'ffffff'},\n`;
+                        code += `  metalness: ${mesh.material.metalness !== undefined ? mesh.material.metalness : 0},\n`;
+                        code += `  roughness: ${mesh.material.roughness !== undefined ? mesh.material.roughness : 1},\n`;
+                        
+                        if (mesh.material.wireframe) {
+                            code += `  wireframe: true,\n`;
+                        }
+                        
+                        code += `});\n`;
+                        
+                        // Determine geometry type
+                        let geometryCode = `const ${obj.id}_geometry = new THREE.BoxGeometry();\n`;
+                        if (mesh.geometry) {
+                            if (mesh.geometry instanceof THREE.BoxGeometry) {
+                                geometryCode = `const ${obj.id}_geometry = new THREE.BoxGeometry();\n`;
+                            } else if (mesh.geometry instanceof THREE.SphereGeometry) {
+                                geometryCode = `const ${obj.id}_geometry = new THREE.SphereGeometry(0.5, 32, 32);\n`;
+                            } else if (mesh.geometry instanceof THREE.CylinderGeometry) {
+                                geometryCode = `const ${obj.id}_geometry = new THREE.CylinderGeometry(0.5, 0.5, 1, 32);\n`;
+                            } else if (mesh.geometry instanceof THREE.TorusGeometry) {
+                                geometryCode = `const ${obj.id}_geometry = new THREE.TorusGeometry(0.5, 0.2, 16, 32);\n`;
+                            } else if (mesh.geometry instanceof THREE.PlaneGeometry) {
+                                geometryCode = `const ${obj.id}_geometry = new THREE.PlaneGeometry(1, 1);\n`;
+                            } else {
+                                geometryCode = `// Complex or custom geometry\n`;
+                                geometryCode += `const ${obj.id}_geometry = new THREE.BoxGeometry();\n`;
+                            }
+                        }
+                        
+                        code += geometryCode;
+                        
+                        // Create the mesh
+                        code += `const ${obj.id} = new THREE.Mesh(${obj.id}_geometry, ${obj.id}_material);\n`;
+                        
+                        // Apply transformations
+                        if (mesh.position) {
+                            code += `${obj.id}.position.set(${mesh.position.x.toFixed(2)}, ${mesh.position.y.toFixed(2)}, ${mesh.position.z.toFixed(2)});\n`;
+                        }
+                        
+                        if (mesh.rotation) {
+                            code += `${obj.id}.rotation.set(${mesh.rotation.x.toFixed(4)}, ${mesh.rotation.y.toFixed(4)}, ${mesh.rotation.z.toFixed(4)});\n`;
+                        }
+                        
+                        if (mesh.scale) {
+                            code += `${obj.id}.scale.set(${mesh.scale.x.toFixed(2)}, ${mesh.scale.y.toFixed(2)}, ${mesh.scale.z.toFixed(2)});\n`;
+                        }
+                        
+                        // Apply shadows
+                        if (mesh.castShadow) {
+                            code += `${obj.id}.castShadow = true;\n`;
+                        }
+                        
+                        if (mesh.receiveShadow) {
+                            code += `${obj.id}.receiveShadow = true;\n`;
+                        }
+                    }
+                    
+                    // Add interactivity code if defined
+                    if (obj.interaction && obj.interaction.type !== 'none') {
+                        code += `\n// Interactivity for ${obj.name}\n`;
+                        
+                        // Add hover effects
+                        if (obj.interaction.type === 'hover' || obj.interaction.type === 'both') {
+                            code += `// Hover effect: ${obj.interaction.hoverEffect}\n`;
+                            code += `${obj.id}.userData.hoverEffect = '${obj.interaction.hoverEffect}';\n`;
+                            
+                            if (obj.interaction.hoverEffect === 'color' || obj.interaction.hoverEffect === 'emissive') {
+                                code += `${obj.id}.userData.hoverColor = '${obj.interaction.hoverColor}';\n`;
+                            }
+                            
+                            if (obj.interaction.hoverEffect === 'scale' || obj.interaction.hoverEffect === 'emissive') {
+                                code += `${obj.id}.userData.hoverIntensity = ${obj.interaction.hoverIntensity};\n`;
+                            }
+                        }
+                        
+                        // Add click actions
+                        if (obj.interaction.type === 'click' || obj.interaction.type === 'both') {
+                            code += `// Click action: ${obj.interaction.clickAction}\n`;
+                            code += `${obj.id}.userData.clickAction = '${obj.interaction.clickAction}';\n`;
+                            
+                            if (obj.interaction.clickAction === 'url' && obj.interaction.url) {
+                                code += `${obj.id}.userData.url = '${obj.interaction.url}';\n`;
+                            }
+                            
+                            if (obj.interaction.clickAction === 'animate') {
+                                code += `${obj.id}.userData.animationType = '${obj.interaction.animationType}';\n`;
+                            }
+                            
+                            if (obj.interaction.clickAction === 'custom' && obj.interaction.customFunction) {
+                                code += `${obj.id}.userData.customFunction = '${obj.interaction.customFunction}';\n`;
+                            }
+                        }
+                        
+                        // Add tooltip
+                        if (obj.interaction.tooltipEnabled && obj.interaction.tooltip) {
+                            code += `// Tooltip\n`;
+                            code += `${obj.id}.userData.tooltip = '${obj.interaction.tooltip}';\n`;
+                        }
+                    }
+                    
+                    code += `scene.add(${obj.id});\n\n`;
+                }
+            });
+            
+            // Add interactivity handlers if any interactive objects exist
+            const hasInteractiveObjects = sceneManager.objects.some(obj => 
+                obj.interaction && obj.interaction.type !== 'none');
+            
+            if (hasInteractiveObjects) {
+                code += `// Interactivity handlers\n`;
+                code += `const raycaster = new THREE.Raycaster();\n`;
+                code += `const mouse = new THREE.Vector2();\n`;
+                code += `let hoveredObject = null;\n\n`;
+                
+                // Mouse move handler for hover effects
+                code += `function onMouseMove(event) {\n`;
+                code += `  // Calculate mouse position\n`;
+                code += `  mouse.x = (event.clientX / window.innerWidth) * 2 - 1;\n`;
+                code += `  mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;\n`;
+                code += `  \n`;
+                code += `  // Update raycaster\n`;
+                code += `  raycaster.setFromCamera(mouse, camera);\n`;
+                code += `  \n`;
+                code += `  // Find intersections\n`;
+                code += `  const intersects = raycaster.intersectObjects(scene.children, true);\n`;
+                code += `  \n`;
+                code += `  // Handle hover effects\n`;
+                code += `  if (intersects.length > 0) {\n`;
+                code += `    const object = intersects[0].object;\n`;
+                code += `    if (object.userData.hoverEffect) {\n`;
+                code += `      // Remove hover effect from previous object\n`;
+                code += `      if (hoveredObject && hoveredObject !== object) {\n`;
+                code += `        removeHoverEffect(hoveredObject);\n`;
+                code += `      }\n`;
+                code += `      \n`;
+                code += `      // Apply hover effect to new object\n`;
+                code += `      applyHoverEffect(object);\n`;
+                code += `      hoveredObject = object;\n`;
+                code += `      document.body.style.cursor = 'pointer';\n`;
+                code += `    }\n`;
+                code += `  } else {\n`;
+                code += `    // No hover - reset\n`;
+                code += `    if (hoveredObject) {\n`;
+                code += `      removeHoverEffect(hoveredObject);\n`;
+                code += `      hoveredObject = null;\n`;
+                code += `      document.body.style.cursor = 'default';\n`;
+                code += `    }\n`;
+                code += `  }\n`;
+                code += `}\n\n`;
+                
+                // Apply hover effect function
+                code += `function applyHoverEffect(object) {\n`;
+                code += `  switch (object.userData.hoverEffect) {\n`;
+                code += `    case 'highlight':\n`;
+                code += `      // Implement highlight effect\n`;
+                code += `      object.userData.originalOutline = object.material.emissive?.clone();\n`;
+                code += `      object.material.emissive = new THREE.Color(0x555555);\n`;
+                code += `      break;\n`;
+                code += `    case 'scale':\n`;
+                code += `      // Implement scale effect\n`;
+                code += `      object.userData.originalScale = object.scale.clone();\n`;
+                code += `      object.scale.multiplyScalar(1 + (object.userData.hoverIntensity || 0.1));\n`;
+                code += `      break;\n`;
+                code += `    case 'color':\n`;
+                code += `      // Implement color effect\n`;
+                code += `      object.userData.originalColor = object.material.color.clone();\n`;
+                code += `      object.material.color.set(object.userData.hoverColor || '#ffcc00');\n`;
+                code += `      break;\n`;
+                code += `    case 'emissive':\n`;
+                code += `      // Implement emissive effect\n`;
+                code += `      object.userData.originalEmissive = object.material.emissive?.clone();\n`;
+                code += `      object.material.emissive = new THREE.Color(object.userData.hoverColor || '#ffcc00');\n`;
+                code += `      object.material.emissiveIntensity = object.userData.hoverIntensity || 0.5;\n`;
+                code += `      break;\n`;
+                code += `    case 'animate':\n`;
+                code += `      // Implement animation effect (for GLTF animations)\n`;
+                code += `      if (object.userData.animationType && object.userData.animationType.startsWith('gltf:')) {\n`;
+                code += `        // This requires setting up animation mixer for each model\n`;
+                code += `        console.log('Animation would play: ' + object.userData.animationType);\n`;
+                code += `      }\n`;
+                code += `      break;\n`;
+                code += `  }\n`;
+                code += `}\n\n`;
+                
+                // Remove hover effect function
+                code += `function removeHoverEffect(object) {\n`;
+                code += `  switch (object.userData.hoverEffect) {\n`;
+                code += `    case 'highlight':\n`;
+                code += `      // Remove highlight\n`;
+                code += `      if (object.userData.originalOutline) {\n`;
+                code += `        object.material.emissive = object.userData.originalOutline;\n`;
+                code += `      }\n`;
+                code += `      break;\n`;
+                code += `    case 'scale':\n`;
+                code += `      // Remove scale\n`;
+                code += `      if (object.userData.originalScale) {\n`;
+                code += `        object.scale.copy(object.userData.originalScale);\n`;
+                code += `      }\n`;
+                code += `      break;\n`;
+                code += `    case 'color':\n`;
+                code += `      // Remove color\n`;
+                code += `      if (object.userData.originalColor) {\n`;
+                code += `        object.material.color.copy(object.userData.originalColor);\n`;
+                code += `      }\n`;
+                code += `      break;\n`;
+                code += `    case 'emissive':\n`;
+                code += `      // Remove emissive\n`;
+                code += `      if (object.userData.originalEmissive) {\n`;
+                code += `        object.material.emissive.copy(object.userData.originalEmissive);\n`;
+                code += `        object.material.emissiveIntensity = 1;\n`;
+                code += `      }\n`;
+                code += `      break;\n`;
+                code += `    case 'animate':\n`;
+                code += `      // Stop animation\n`;
+                code += `      if (object.userData.animationType && object.userData.animationType.startsWith('gltf:')) {\n`;
+                code += `        // Would stop animation here\n`;
+                code += `        console.log('Animation would stop: ' + object.userData.animationType);\n`;
+                code += `      }\n`;
+                code += `      break;\n`;
+                code += `  }\n`;
+                code += `}\n\n`;
+                
+                // Click handler for interactive objects
+                code += `function onClick(event) {\n`;
+                code += `  mouse.x = (event.clientX / window.innerWidth) * 2 - 1;\n`;
+                code += `  mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;\n`;
+                code += `  \n`;
+                code += `  raycaster.setFromCamera(mouse, camera);\n`;
+                code += `  const intersects = raycaster.intersectObjects(scene.children, true);\n`;
+                code += `  \n`;
+                code += `  if (intersects.length > 0) {\n`;
+                code += `    const object = intersects[0].object;\n`;
+                code += `    \n`;
+                code += `    if (object.userData.clickAction) {\n`;
+                code += `      switch (object.userData.clickAction) {\n`;
+                code += `        case 'toggle':\n`;
+                code += `          // Toggle visibility\n`;
+                code += `          object.visible = !object.visible;\n`;
+                code += `          break;\n`;
+                code += `          \n`;
+                code += `        case 'animate':\n`;
+                code += `          // Handle GLTF animations\n`;
+                code += `          if (object.userData.animationType && object.userData.animationType.startsWith('gltf:')) {\n`;
+                code += `            // Requires setting up animation mixer for each model\n`;
+                code += `            console.log('Would play animation: ' + object.userData.animationType);\n`;
+                code += `          } else {\n`;
+                code += `            // Start built-in animation\n`;
+                code += `            if (!object.userData.animating) {\n`;
+                code += `              object.userData.animating = true;\n`;
+                code += `              object.userData.originalPosition = object.position.clone();\n`;
+                code += `              object.userData.originalRotation = object.rotation.clone();\n`;
+                code += `              \n`;
+                code += `              // Animation type\n`;
+                code += `              object.userData.animationType = object.userData.animationType || 'rotate';\n`;
+                code += `              \n`;
+                code += `              // Start animation loop\n`;
+                code += `              animateObject(object);\n`;
+                code += `            } else {\n`;
+                code += `              // Stop animation\n`;
+                code += `              object.userData.animating = false;\n`;
+                code += `              \n`;
+                code += `              // Reset position/rotation\n`;
+                code += `              if (object.userData.originalPosition) {\n`;
+                code += `                object.position.copy(object.userData.originalPosition);\n`;
+                code += `              }\n`;
+                code += `              if (object.userData.originalRotation) {\n`;
+                code += `                object.rotation.copy(object.userData.originalRotation);\n`;
+                code += `              }\n`;
+                code += `            }\n`;
+                code += `          }\n`;
+                code += `          break;\n`;
+                code += `          \n`;
+                code += `        case 'url':\n`;
+                code += `          // Open URL\n`;
+                code += `          if (object.userData.url) {\n`;
+                code += `            window.open(object.userData.url, '_blank');\n`;
+                code += `          }\n`;
+                code += `          break;\n`;
+                code += `          \n`;
+                code += `        case 'custom':\n`;
+                code += `          // Execute custom function\n`;
+                code += `          if (object.userData.customFunction && \n`;
+                code += `              typeof window[object.userData.customFunction] === 'function') {\n`;
+                code += `            window[object.userData.customFunction](object);\n`;
+                code += `          }\n`;
+                code += `          break;\n`;
+                code += `      }\n`;
+                code += `    }\n`;
+                code += `  }\n`;
+                code += `}\n\n`;
+                
+                // Animation function
+                code += `function animateObject(object) {\n`;
+                code += `  if (!object.userData.animating) return;\n`;
+                code += `  \n`;
+                code += `  // Update object based on animation type\n`;
+                code += `  switch (object.userData.animationType) {\n`;
+                code += `    case 'rotate':\n`;
+                code += `      object.rotation.y += 0.02;\n`;
+                code += `      break;\n`;
+                code += `      \n`;
+                code += `    case 'bounce':\n`;
+                code += `      // Simple bounce using sine wave\n`;
+                code += `      const time = Date.now() * 0.001; // Convert to seconds\n`;
+                code += `      const bounceHeight = Math.sin(time * 5) * 0.2;\n`;
+                code += `      object.position.y = object.userData.originalPosition.y + bounceHeight;\n`;
+                code += `      break;\n`;
+                code += `      \n`;
+                code += `    case 'spin':\n`;
+                code += `      // Spin on all axes\n`;
+                code += `      object.rotation.x += 0.02;\n`;
+                code += `      object.rotation.y += 0.02;\n`;
+                code += `      object.rotation.z += 0.02;\n`;
+                code += `      break;\n`;
+                code += `  }\n`;
+                code += `  \n`;
+                code += `  // Continue animation loop\n`;
+                code += `  requestAnimationFrame(() => animateObject(object));\n`;
+                code += `}\n\n`;
+                
+                // Event listeners
+                code += `// Add event listeners for interactivity\n`;
+                code += `window.addEventListener('mousemove', onMouseMove);\n`;
+                code += `window.addEventListener('click', onClick);\n\n`;
+            }
+            
+            // Add animation loop
+            code += `// Animation loop\n`;
+            code += `const clock = new THREE.Clock();\n`;
+            code += `function animate() {\n`;
+            code += `  requestAnimationFrame(animate);\n`;
+            code += `  const deltaTime = clock.getDelta();\n\n`;
+            code += `  // Update animations\n`;
+            
+            // Check if there are any GLTF models with animations
+            const hasAnimatedModels = sceneManager.objects.some(obj => 
+                obj.mixer && obj.gltfAnimations && obj.gltfAnimations.length > 0);
+            
+            if (hasAnimatedModels) {
+                code += `  // Update animation mixers\n`;
+                code += `  // For each model with animations:\n`;
+                code += `  // if (mixer) mixer.update(deltaTime);\n\n`;
+            }
+            
+            code += `  controls.update();\n`;
+            code += `  renderer.render(scene, camera);\n`;
+            code += `}\n\n`;
+            code += `animate();\n\n`;
+            
+            // Add window resize handler
+            code += `// Window resize handler\n`;
+            code += `window.addEventListener('resize', () => {\n`;
+            code += `  camera.aspect = window.innerWidth / window.innerHeight;\n`;
+            code += `  camera.updateProjectionMatrix();\n`;
+            code += `  renderer.setSize(window.innerWidth, window.innerHeight);\n`;
+            code += `});\n`;
+            
+            // Copy to clipboard
+            navigator.clipboard.writeText(code)
+                .then(() => {
+                    updateSceneInfo('Three.js code copied to clipboard!', false, 'success');
+                })
+                .catch(err => {
+                    console.error('Could not copy text: ', err);
+                    // Fallback
+                    const textarea = document.createElement('textarea');
+                    textarea.value = code;
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textarea);
+                    updateSceneInfo('Three.js code copied to clipboard!', false, 'success');
+                });
+        } catch (error) {
+            console.error('Error generating code:', error);
+            updateSceneInfo('Error generating Three.js code', true);
+        }
+    }
+    
+    // Animation loop
+    function animate() {
+        requestAnimationFrame(animate);
+        
+        // Calculate delta time for animations
+        const now = Date.now();
+        const deltaTime = (now - sceneManager.lastUpdateTime) / 1000; // Convert to seconds
+        sceneManager.lastUpdateTime = now;
+        
+        // Update all animation mixers for GLTF models
+        sceneManager.objects.forEach(obj => {
+            if (obj.mixer) {
+                obj.mixer.update(deltaTime);
+            }
+        });
+        
+        orbitControls.update();
+        
+        // Apply outline effect to highlighted objects
+        scene.traverse(object => {
+            if (object.userData && object.userData.isHighlighted) {
+                // Render outline for highlighted objects
+                // This is a simplified approach - in a full implementation you'd use an outline pass
+                // The editor just adds a visual indicator in the scene
+                if (object.material && object.material.emissive) {
+                    object.material.emissive.set(0x333333);
+                }
+            }
+        });
+        
+        renderer.render(scene, camera);
+    }
+    
+    // Window resize handler
+    window.addEventListener('resize', () => {
+        const width = window.innerWidth - 320;
+        const height = window.innerHeight;
+        
+        // Update camera aspect ratio and projection matrix
+        if (camera === perspectiveCamera) {
+            perspectiveCamera.aspect = width / height;
+            perspectiveCamera.updateProjectionMatrix();
+        } else {
+            // Update orthographic camera frustum
+            orthographicCamera.left = -5 * (width / height);
+            orthographicCamera.right = 5 * (width / height);
+            orthographicCamera.updateProjectionMatrix();
+        }
+        
+        // Update renderer size
+        renderer.setSize(width, height);
+    });
+    
+    // Set up the UI components
+    setupTabs();
+    setupEventListeners();
+    
+    // Select the initial object
+    sceneManager.selectObject(boxObj.id);
+    
+    // Start animation loop
+    animate();
+    
+    // Show ready message
+    updateSceneInfo('3D Scene Editor ready. Click on objects to select them');
+}
