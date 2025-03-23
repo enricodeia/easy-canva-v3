@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Scene Editor</title>
+    <link rel="stylesheet" href="styles.css">
+    <!-- Import Three.js and required libraries from CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r132/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.0/examples/js/loaders/RGBELoader.js"></script>
+    <!-- JSZip for texture export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <!-- Google Fonts - Inter & JetBrains Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="dark-theme">
+    <!-- Main container -->
+    <div class="app-container">
+        <!-- Sidebar for controls -->
+        <div id="sidebar">
+            <div class="sidebar-header">
+                <h2>3D Scene Editor</h2>
+            </div>
+            
+            <!-- Export Code (Main CTA) -->
+            <div id="export-actions">
+                <button id="copyCode" class="primary-btn">Copy Three.js Code</button>
+                <button id="exportScene">Download JSON</button>
+            </div>
+            
+            <!-- Main tabs navigation -->
+            <div class="tabs-container">
+                <div class="tabs-header">
+                    <button class="tab-btn" data-tab="objects">Objects</button>
+                    <button class="tab-btn active" data-tab="materials">Materials</button>
+                    <button class="tab-btn" data-tab="lighting">Lighting</button>
+                    <button class="tab-btn" data-tab="environment">Environment</button>
+                </div>
+                
+                <!-- Objects Tab -->
+                <div class="tab-content" id="objects-tab">
+                    <!-- Object Management -->
+                    <div class="control-group">
+                        <div class="group-header">
+                            <h3>Scene Objects</h3>
+                            <div class="btn-group">
+                                <button id="addObject" class="icon-btn">+ Add</button>
+                                <button id="importModelBtn" class="icon-btn">Import</button>
+                            </div>
+                        </div>
+                        
+                        <!-- Add geometry type selection dropdown -->
+                        <div class="property add-object-type" style="display: none;">
+                            <label for="geometrySelector">Add Object Type:</label>
+                            <select id="geometrySelector">
+                                <option value="box">Cube</option>
+                                <option value="sphere">Sphere</option>
+                                <option value="cylinder">Cylinder</option>
+                                <option value="torus">Torus</option>
+                                <option value="plane">Plane</option>
+                                <option value="light-point">Point Light</option>
+                                <option value="light-spot">Spot Light</option>
+                                <option value="light-area">Area Light</option>
+                            </select>
+                            <button id="confirmAddObject" class="confirm-btn">Create</button>
+                        </div>
+                        
+                        <!-- Hidden file input for model import -->
+                        <input type="file" id="importModel" accept=".gltf, .glb" style="display: none;">
+                        
+                        <!-- Layer Panel -->
+                        <div id="layerPanel">
+                            <ul id="objectList">
+                                <!-- Objects will be listed here -->
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- Selected Object Properties -->
+                    <div class="control-group disabled" id="objectProperties">
+                        <div class="group-header">
+                            <h3>Object Properties</h3>
+                            <span class="selected-name">No selection</span>
+                        </div>
+                        
+                        <!-- Geometry Selection (only shown for mesh objects) -->
+                        <div class="property geometry-property">
+                            <label for="changeGeometryType">Geometry Type:</label>
+                            <select id="changeGeometryType">
+                                <option value="box">Cube</option>
+                                <option value="sphere">Sphere</option>
+                                <option value="cylinder">Cylinder</option>
+                                <option value="torus">Torus</option>
+                                <option value="plane">Plane</option>
+                            </select>
+                        </div>
+
+                        <!-- Position Controls - Now vertical -->
+                        <div class="property">
+                            <label>Position:</label>
+                            <div class="vertical-inputs">
+                                <div class="input-group">
+                                    <label for="positionX">X:</label>
+                                    <input type="number" id="positionX" step="0.1" value="0">
+                                </div>
+                                <div class="input-group">
+                                    <label for="positionY">Y:</label>
+                                    <input type="number" id="positionY" step="0.1" value="0">
+                                </div>
+                                <div class="input-group">
+                                    <label for="positionZ">Z:</label>
+                                    <input type="number" id="positionZ" step="0.1" value="0">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Rotation Controls - Now vertical -->
+                        <div class="property">
+                            <label>Rotation (deg):</label>
+                            <div class="vertical-inputs">
+                                <div class="input-group">
+                                    <label for="rotateX">X:</label>
+                                    <input type="number" id="rotateX" step="1" value="0">
+                                </div>
+                                <div class="input-group">
+                                    <label for="rotateY">Y:</label>
+                                    <input type="number" id="rotateY" step="1" value="0">
+                                </div>
+                                <div class="input-group">
+                                    <label for="rotateZ">Z:</label>
+                                    <input type="number" id="rotateZ" step="1" value="0">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Scale Controls - Now vertical -->
+                        <div class="property scale-property">
+                            <label>Scale:</label>
+                            <div class="vertical-inputs">
+                                <div class="input-group">
+                                    <label for="scaleX">X:</label>
+                                    <input type="number" id="scaleX" min="0.1" step="0.1" value="1">
+                                </div>
+                                <div class="input-group">
+                                    <label for="scaleY">Y:</label>
+                                    <input type="number" id="scaleY" min="0.1" step="0.1" value="1">
+                                </div>
+                                <div class="input-group">
+                                    <label for="scaleZ">Z:</label>
+                                    <input type="number" id="scaleZ" min="0.1" step="0.1" value="1">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Light specific controls -->
+                        <div class="property light-property" style="display: none;">
+                            <label>Light Parameters:</label>
+                            <div class="vertical-inputs">
+                                <div class="input-group">
+                                    <label for="lightIntensity">Intensity:</label>
+                                    <input type="number" id="lightIntensity" min="0" max="10" step="0.1" value="1">
+                                </div>
+                                <div class="input-group">
+                                    <label for="lightDistance">Distance:</label>
+                                    <input type="number" id="lightDistance" min="0" step="1" value="10">
+                                </div>
+                                <div class="input-group">
+                                    <label for="lightColor">Color:</label>
+                                    <div class="color-picker-container">
+                                        <input type="color" id="lightColor" value="#ffffff">
+                                    </div>
+                                </div>
+                                <!-- Spot light specific -->
+                                <div class="input-group spot-light-prop">
+                                    <label for="lightAngle">Angle (deg):</label>
+                                    <input type="number" id="lightAngle" min="0" max="90" step="1" value="45">
+                                </div>
+                                <div class="input-group spot-light-prop">
+                                    <label for="lightPenumbra">Penumbra:</label>
+                                    <input type="number" id="lightPenumbra" min="0" max="1" step="0.05" value="0">
+                                </div>
+                                <div class="checkbox-group">
+                                    <input type="checkbox" id="lightCastShadow" checked>
+                                    <label for="lightCastShadow">Cast Shadows</label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Materials Tab -->
+                <div class="tab-content active" id="materials-tab">
+                    <!-- Material properties -->
+                    <div class="control-group" id="materialProperties">
+                        <div class="group-header">
+                            <h3>Basic Material</h3>
+                        </div>
+                        
+                        <!-- Color Control -->
+                        <div class="property">
+                            <label for="objectColor">Base Color:</label>
+                            <div class="color-picker-container">
+                                <input type="color" id="objectColor" value="#0077ff">
+                            </div>
+                        </div>
+
+                        <!-- Material Controls -->
+                        <div class="property">
+                            <div class="vertical-inputs">
+                                <div class="input-group">
+                                    <label for="metalness">Metalness:</label>
+                                    <input type="number" id="metalness" min="0" max="1" step="0.1" value="0">
+                                </div>
+                                <div class="input-group">
+                                    <label for="roughness">Roughness:</label>
+                                    <input type="number" id="roughness" min="0" max="1" step="0.1" value="1">
+                                </div>
+                                <div class="checkbox-group">
+                                    <input type="checkbox" id="wireframe">
+                                    <label for="wireframe">Wireframe</label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- NEW: PBR Texture Generator -->
+                    <div class="control-group" id="pbrTextureGenerator">
+                        <div class="group-header">
+                            <h3>PBR Texture Generator</h3>
+                            <button id="smartEnhance" class="icon-btn">
+                                <i class="fas fa-magic"></i> Smart Enhance
+                            </button>
+                        </div>
+                        
+                        <!-- Texture Upload Area -->
+                        <div class="property">
+                            <div class="upload-area" id="textureUploadArea">
+                                <div class="upload-content">
+                                    <i class="fas fa-cloud-upload-alt"></i>
+                                    <p>Drag & drop texture or</p>
+                                    <label for="textureUploadInput" class="upload-btn">Browse Files</label>
+                                    <input type="file" id="textureUploadInput" accept="image/*" hidden>
+                                </div>
+                                <div class="preview-overlay" id="texturePreviewOverlay" style="display: none;">
+                                    <img id="uploadedTextureImg" src="" alt="Uploaded texture">
+                                    <button class="delete-btn" id="deleteTextureBtn">Delete</button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Material Type Selection -->
+                        <div class="property">
+                            <label for="materialTypeSelect">Material Type:</label>
+                            <select id="materialTypeSelect" class="full-width-select">
+                                <option value="auto">Auto-Detect</option>
+                                <option value="metal">Metal</option>
+                                <option value="wood">Wood</option>
+                                <option value="stone">Stone</option>
+                                <option value="fabric">Fabric</option>
+                                <option value="plastic">Plastic</option>
+                            </select>
+                        </div>
+                        
+                        <!-- UV Mapping Controls -->
+                        <div class="property">
+                            <h4 class="sub-header">UV Mapping Controls</h4>
+                            <div class="vertical-inputs">
+                                <!-- Tiling Controls -->
+                                <div class="input-group">
+                                    <label for="uvTilingX">Tiling X:</label>
+                                    <input type="number" id="uvTilingX" min="0.1" max="10" step="0.1" value="1">
+                                </div>
+                                <div class="input-group">
+                                    <label for="uvTilingY">Tiling Y:</label>
+                                    <input type="number" id="uvTilingY" min="0.1" max="10" step="0.1" value="1">
+                                </div>
+                                
+                                <!-- Offset Controls -->
+                                <div class="input-group">
+                                    <label for="uvOffsetX">Offset X:</label>
+                                    <input type="number" id="uvOffsetX" min="-1" max="1" step="0.01" value="0">
+                                </div>
+                                <div class="input-group">
+                                    <label for="uvOffsetY">Offset Y:</label>
+                                    <input type="number" id="uvOffsetY" min="-1" max="1" step="0.01" value="0">
+                                </div>
+                                
+                                <!-- Rotation Control -->
+                                <div class="input-group">
+                                    <label for="uvRotation">Rotation:</label>
+                                    <input type="number" id="uvRotation" min="0" max="360" step="1" value="0">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Texture Map Strength Controls -->
+                        <div class="property">
+                            <h4 class="sub-header">Map Strengths</h4>
+                            <div class="vertical-inputs">
+                                <div class="input-group">
+                                    <label for="normalStrength">Normal:</label>
+                                    <input type="range" id="normalStrength" min="0" max="2" step="0.01" value="1">
+                                    <span class="value-label" id="normalStrengthValue">1.00</span>
+                                </div>
+                                <div class="input-group">
+                                    <label for="roughnessStrength">Roughness:</label>
+                                    <input type="range" id="roughnessStrength" min="0" max="1" step="0.01" value="1">
+                                    <span class="value-label" id="roughnessStrengthValue">1.00</span>
+                                </div>
+                                <div class="input-group">
+                                    <label for="displacementStrength">Displacement:</label>
+                                    <input type="range" id="displacementStrength" min="0" max="1" step="0.01" value="0.2">
+                                    <span class="value-label" id="displacementStrengthValue">0.20</span>
+                                </div>
+                                <div class="input-group">
+                                    <label for="aoStrength">AO:</label>
+                                    <input type="range" id="aoStrength" min="0" max="1" step="0.01" value="1">
+                                    <span class="value-label" id="aoStrengthValue">1.00</span>
+                                </div>
+                                <div class="input-group">
+                                    <label for="emissiveStrength">Emissive:</label>
+                                    <input type="range" id="emissiveStrength" min="0" max="1" step="0.01" value="0">
+                                    <span class="value-label" id="emissiveStrengthValue">0.00</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Generated Texture Maps Preview -->
+                    <div class="control-group" id="generatedMapsGroup">
+                        <div class="group-header">
+                            <h3>Generated Maps</h3>
+                            <button id="exportMaps" class="icon-btn">
+                                <i class="fas fa-file-export"></i> Export
+                            </button>
+                        </div>
+                        
+                        <div class="texture-maps-grid">
+                            <!-- Base Color Map -->
+                            <div class="map-preview">
+                                <div class="map-header">
+                                    <span>Base Color</span>
+                                    <button class="download-btn" id="downloadBaseColor">
+                                        <i class="fas fa-download"></i>
+                                    </button>
+                                </div>
+                                <div class="map-canvas-container">
+                                    <canvas id="baseColorMap"></canvas>
+                                </div>
+                            </div>
+                            
+                            <!-- Normal Map -->
+                            <div class="map-preview">
+                                <div class="map-header">
+                                    <span>Normal</span>
+                                    <button class="download-btn" id="downloadNormal">
+                                        <i class="fas fa-download"></i>
+                                    </button>
+                                </div>
+                                <div class="map-canvas-container">
+                                    <canvas id="normalMap"></canvas>
+                                </div>
+                            </div>
+                            
+                            <!-- Roughness Map -->
+                            <div class="map-preview">
+                                <div class="map-header">
+                                    <span>Roughness</span>
+                                    <button class="download-btn" id="downloadRoughness">
+                                        <i class="fas fa-download"></i>
+                                    </button>
+                                </div>
+                                <div class="map-canvas-container">
+                                    <canvas id="roughnessMap"></canvas>
+                                </div>
+                            </div>
+                            
+                            <!-- Displacement Map -->
+                            <div class="map-preview">
+                                <div class="map-header">
+                                    <span>Displacement</span>
+                                    <button class="download-btn" id="downloadDisplacement">
+                                        <i class="fas fa-download"></i>
+                                    </button>
+                                </div>
+                                <div class="map-canvas-container">
+                                    <canvas id="displacementMap"></canvas>
+                                </div>
+                            </div>
+                            
+                            <!-- AO Map -->
+                            <div class="map-preview">
+                                <div class="map-header">
+                                    <span>AO</span>
+                                    <button class="download-btn" id="downloadAO">
+                                        <i class="fas fa-download"></i>
+                                    </button>
+                                </div>
+                                <div class="map-canvas-container">
+                                    <canvas id="aoMap"></canvas>
+                                </div>
+                            </div>
+                            
+                            <!-- Emissive Map -->
+                            <div class="map-preview">
+                                <div class="map-header">
+                                    <span>Emissive</span>
+                                    <button class="download-btn" id="downloadEmissive">
+                                        <i class="fas fa-download"></i>
+                                    </button>
+                                </div>
+                                <div class="map-canvas-container">
+                                    <canvas id="emissiveMap"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Export Options -->
+                        <div class="property export-options" style="display: none;">
+                            <h4 class="sub-header">Export Options</h4>
+                            <div class="export-format">
+                                <span>Format:</span>
+                                <div class="radio-group">
+                                    <input type="radio" id="formatPNG" name="exportFormat" value="png" checked>
+                                    <label for="formatPNG">PNG</label>
+                                    <input type="radio" id="formatJPG" name="exportFormat" value="jpg">
+                                    <label for="formatJPG">JPG</label>
+                                    <input type="radio" id="formatWEBP" name="exportFormat" value="webp">
+                                    <label for="formatWEBP">WebP</label>
+                                </div>
+                            </div>
+                            <div class="export-maps">
+                                <div class="checkbox-row">
+                                    <div class="checkbox-group">
+                                        <input type="checkbox" id="exportBaseColor" checked>
+                                        <label for="exportBaseColor">Base Color</label>
+                                    </div>
+                                    <div class="checkbox-group">
+                                        <input type="checkbox" id="exportNormal" checked>
+                                        <label for="exportNormal">Normal</label>
+                                    </div>
+                                    <div class="checkbox-group">
+                                        <input type="checkbox" id="exportRoughness" checked>
+                                        <label for="exportRoughness">Roughness</label>
+                                    </div>
+                                </div>
+                                <div class="checkbox-row">
+                                    <div class="checkbox-group">
+                                        <input type="checkbox" id="exportDisplacement" checked>
+                                        <label for="exportDisplacement">Displacement</label>
+                                    </div>
+                                    <div class="checkbox-group">
+                                        <input type="checkbox" id="exportAO" checked>
+                                        <label for="exportAO">AO</label>
+                                    </div>
+                                    <div class="checkbox-group">
+                                        <input type="checkbox" id="exportEmissive">
+                                        <label for="exportEmissive">Emissive</label>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="export-actions">
+                                <button id="exportZIP" class="confirm-btn">Export as ZIP</button>
+                                <button id="cancelExport" class="icon-btn">Cancel</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Textures Panel (Original) -->
+                    <div class="control-group" id="texturesPanel">
+                        <div class="group-header">
+                            <h3>External Textures</h3>
+                            <button id="addTexture" class="icon-btn">+ Add</button>
+                        </div>
+                        <div id="texturesList">
+                            <!-- Textures will be listed here -->
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Lighting Tab -->
+                <div class="tab-content" id="lighting-tab">
+                    <!-- Ambient Light -->
+                    <div class="control-group">
+                        <h3>Ambient Light</h3>
+                        <div class="property">
+                            <div class="vertical-inputs">
+                                <div class="input-group">
+                                    <label for="ambientIntensity">Intensity:</label>
+                                    <input type="number" id="ambientIntensity" min="0" max="2" step="0.1" value="0.5">
+                                </div>
+                                <div class="input-group">
+                                    <label for="ambientColor">Color:</label>
+                                    <div class="color-picker-container">
+                                        <input type="color" id="ambientColor" value="#ffffff">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Scene Lights -->
+                    <div class="control-group">
+                        <h3>Scene Lights</h3>
+                        <div id="lightsManagerPanel">
+                            <!-- Lights will be listed here -->
+                        </div>
+                    </div>
+                    
+                    <!-- Shadows -->
+                    <div class="control-group">
+                        <h3>Shadows</h3>
+                        <div class="property">
+                            <div class="vertical-inputs">
+                                <div class="checkbox-group">
+                                    <input type="checkbox" id="enableShadows" checked>
+                                    <label for="enableShadows">Enable Shadows</label>
+                                </div>
+                                <div class="input-group">
+                                    <label for="shadowQuality">Shadow Quality:</label>
+                                    <select id="shadowQuality">
+                                        <option value="low">Low</option>
+                                        <option value="medium" selected>Medium</option>
+                                        <option value="high">High</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Environment Tab -->
+                <div class="tab-content" id="environment-tab">
+                    <!-- Camera Controls -->
+                    <div class="control-group">
+                        <h3>Camera</h3>
+                        <div class="property">
+                            <label for="cameraType">Type:</label>
+                            <select id="cameraType">
+                                <option value="perspective">Perspective</option>
+                                <option value="orthographic">Orthographic</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Camera Position Controls - Now vertical -->
+                        <div class="property">
+                            <label>Position:</label>
+                            <div class="vertical-inputs">
+                                <div class="input-group">
+                                    <label for="cameraX">X:</label>
+                                    <input type="number" id="cameraX" step="0.5" value="0">
+                                </div>
+                                <div class="input-group">
+                                    <label for="cameraY">Y:</label>
+                                    <input type="number" id="cameraY" step="0.5" value="2">
+                                </div>
+                                <div class="input-group">
+                                    <label for="cameraZ">Z:</label>
+                                    <input type="number" id="cameraZ" step="0.5" value="5">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Camera Target - Now vertical -->
+                        <div class="property">
+                            <label>Look At:</label>
+                            <div class="vertical-inputs">
+                                <div class="input-group">
+                                    <label for="targetX">X:</label>
+                                    <input type="number" id="targetX" step="0.5" value="0">
+                                </div>
+                                <div class="input-group">
+                                    <label for="targetY">Y:</label>
+                                    <input type="number" id="targetY" step="0.5" value="0">
+                                </div>
+                                <div class="input-group">
+                                    <label for="targetZ">Z:</label>
+                                    <input type="number" id="targetZ" step="0.5" value="0">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Fog Controls -->
+                    <div class="control-group">
+                        <h3>Fog</h3>
+                        <div class="property">
+                            <div class="vertical-inputs">
+                                <div class="checkbox-group">
+                                    <input type="checkbox" id="fog">
+                                    <label for="fog">Enable Fog</label>
+                                </div>
+                                <div class="input-group">
+                                    <label for="fogDensity">Fog Density:</label>
+                                    <input type="number" id="fogDensity" min="0.001" max="0.1" step="0.001" value="0.01">
+                                </div>
+                                <div class="input-group">
+                                    <label for="fogColor">Fog Color:</label>
+                                    <div class="color-picker-container">
+                                        <input type="color" id="fogColor" value="#111111">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- HDR Environment with Delete button -->
+                    <div class="control-group">
+                        <h3>HDR Environment</h3>
+                        <div class="property">
+                            <div class="hdr-container">
+                                <div class="file-input-container">
+                                    <label for="hdrUpload" class="file-input-label">Load HDR Map</label>
+                                    <input type="file" id="hdrUpload" accept=".hdr">
+                                </div>
+                                <button id="deleteHdr" class="delete-btn" disabled>Delete HDR</button>
+                            </div>
+                            <div class="hdr-preview-container" id="hdrPreview">
+                                <p class="hdr-status">No HDR Map loaded</p>
+                                <!-- Preview thumbnail will appear here -->
+                            </div>
+                            <div class="input-group">
+                                <label for="envMapIntensity">Intensity:</label>
+                                <input type="number" id="envMapIntensity" min="0" max="5" step="0.1" value="1">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Grid and Ground -->
+                    <div class="control-group">
+                        <h3>Scene Grid</h3>
+                        <div class="property">
+                            <div class="vertical-inputs">
+                                <div class="checkbox-group">
+                                    <input type="checkbox" id="showGrid" checked>
+                                    <label for="showGrid">Show Grid</label>
+                                </div>
+                                <div class="checkbox-group">
+                                    <input type="checkbox" id="showGroundPlane" checked>
+                                    <label for="showGroundPlane">Show Ground Plane</label>
+                                </div>
+                                <div class="input-group">
+                                    <label for="gridSize">Grid Size:</label>
+                                    <input type="number" id="gridSize" min="5" max="100" step="5" value="20">
+                                </div>
+                                <div class="input-group">
+                                    <label for="gridDivisions">Grid Divisions:</label>
+                                    <input type="number" id="gridDivisions" min="5" max="100" step="5" value="20">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Rendering Area -->
+        <div id="canvas-container">
+            <canvas id="three-canvas"></canvas>
+            <div id="scene-info">Click on objects to select them</div>
+        </div>
+    </div>
+    
+    <!-- Processing/Loading Indicator -->
+    <div id="processingIndicator" class="processing-indicator" style="display: none;">
+        <div class="spinner-container">
+            <div class="spinner"></div>
+        </div>
+        <p id="processingMessage">Processing texture...</p>
+        <div class="progress-container">
+            <div id="progressBar" class="progress-bar"></div>
+        </div>
+    </div>
+    
+    <!-- Notification Container -->
+    <div id="notificationContainer" class="notification-container"></div>
+
+    <!-- Main script -->
+    <script src="script.js"></script>
+</body>
+</html>
